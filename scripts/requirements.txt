@@ -1,0 +1,10 @@
+torch
+transformers
+datasets
+scikit-learn
+accelerate
+loguru
+evaluate
+loguru
+openai
+litellm
