@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  training:
+    image: ${DOCKERHUB_USER:-yourusername}/complexity-training:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DOCKERHUB_USER: ${DOCKERHUB_USER:-yourusername}
+    command: ["python", "-m", "complexity.train"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+# Add push configuration
+x-push: &push
+  push: true
+  tags:
+    - ${DOCKERHUB_USER:-yourusername}/complexity-training:${TAG:-latest}
+
+services:
+  training:
+    <<: *push 

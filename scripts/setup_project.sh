@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# 🚀 Project Setup Script using UV
+# 🚀 Project Setup Script using UV and setup.py
 # This script sets up the project, installs uv, pins the Python version,
-# creates a virtual environment, installs dependencies, and runs a test.
+# creates a virtual environment, installs dependencies, and ensures setup.py exists.
 
 # ========================
 # 🔧 Configurable Variables
@@ -22,98 +22,63 @@ log() {
     echo -e "\n[$(date +"%Y-%m-%d %H:%M:%S")] $1"
 }
 
-create_gitignore() {
-    log "📝 Creating .gitignore..."
-    cat << EOF > "$ROOT_DIR/.gitignore"
-# Standard ignores
-.venv/
-.vscode/
-.env
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
+create_setup_py() {
+    if [[ ! -f "$ROOT_DIR/setup.py" ]]; then
+        log "📄 Creating setup.py..."
+        cat << EOF > "$ROOT_DIR/setup.py"
+from setuptools import setup, find_packages
 
-# Data/logs
-data/
-logs/
-*.csv
-*.tsv
-*.jsonl
-
-# Experimental
-experiments/
-results/
-notebooks/
-
-# Large files
-*.pt
-*.bin
-*.h5
-*.zip
-*.tar.gz
-
-# Local development
-.DS_Store
-.idea/
+setup(
+    name="$PROJECT_NAME",
+    version="0.1.0",
+    description="Complexity classification system",
+    author="Your Name",
+    author_email="your.email@example.com",
+    python_requires=">=3.10",
+    packages=find_packages(where="server/src"),
+    package_dir={"": "server/src"},
+    install_requires=[
+        "datasets",
+        "pandas",
+        "matplotlib",
+        "seaborn",
+        "python-dotenv",
+        "litellm",
+        "requests",
+        "markdownify",
+        "tenacity>=9.0.0",
+        "loguru>=0.7.3",
+        "spacy>=3.8.4",
+        "python-arango>=8.1.4",
+        "deepmerge>=2.0",
+        "torch>=2.2.2",
+        "transformers>=4.48.1",
+        "sentence-transformers>=3.4.0",
+        "nltk>=3.9.1",
+        "pyperclip>=1.9.0",
+        "json-repair>=0.35.0",
+        "rapidfuzz>=3.11.0"
+    ],
+    extras_require={
+        "dev": [
+            "pytest",
+            "ipython",
+            "jupyterlab",
+            "pre-commit>=3.6.0"
+        ]
+    },
+)
 EOF
-    log "✅ .gitignore created."
-}
-
-create_env_file() {
-    log "📝 Creating .env file..."
-    cat << EOF > "$ROOT_DIR/.env"
-# Set Python path to include the project's source directory
-PYTHONPATH=$ROOT_DIR/$PYTHON_DIR
-
-# Hugging Face configurations
-HF_TOKEN=your_huggingface_token_here
-HF_HUB_ENABLE_HF_TRANSFER=True  # Enable high-speed downloads
-HF_HUB_DOWNLOAD_TIMEOUT=300     # Increase timeout for large files
-
-# Add other environment variables here
-EOF
-    log "✅ .env file created."
-}
-
-check_env_vars() {
-    log "🔍 Checking required environment variables..."
-    if [[ -z "$HF_TOKEN" ]]; then
-        log "❌ HF_TOKEN is not set in .env file";
-        log "💡 Add your Hugging Face token to the .env file";
-        exit 1;
+        log "✅ setup.py created."
     else
-        log "✅ HF_TOKEN is set.";
+        log "✅ setup.py already exists."
     fi
 }
 
-ensure_python_package() {
-    log "📂 Ensuring '$PYTHON_DIR' is a Python package..."
-    mkdir -p "$ROOT_DIR/$PYTHON_DIR"
-    touch "$ROOT_DIR/$PYTHON_DIR/__init__.py"
-    log "✅ '$PYTHON_DIR' is now a Python package."
-}
-
-install_dependencies() {
-    if [[ -f "$ROOT_DIR/requirements.txt" ]]; then
-        log "📄 Found requirements.txt. Installing dependencies from it..."
-        uv pip sync requirements.txt || { log "❌ Failed to install dependencies from requirements.txt"; exit 1; }
-        log "✅ Dependencies installed from requirements.txt."
-    else
-        log "📄 No requirements.txt found. Syncing dependencies from pyproject.toml..."
-        uv pip sync || { log "❌ Failed to sync dependencies from pyproject.toml"; exit 1; }
-        log "✅ Dependencies synced from pyproject.toml."
-    fi
-}
-
-run_module_test() {
-    log "🧪 Running module test..."
-    source "$ROOT_DIR/.venv/bin/activate" || { log "❌ Failed to activate virtual environment"; exit 1; }
-    python -c "import smolagent; print('✅ SmolAgent module imported successfully!')" || {
-        log "❌ Module test failed. Ensure 'smolagent' is properly configured.";
-        exit 1;
-    }
+install_package() {
+    log "📦 Installing project in editable mode using setup.py..."
+    uv pip install -e . || { log "❌ Failed to install project in editable mode"; exit 1; }
+    log "✅ Project installed in editable mode."
 }
 
 # ========================
@@ -135,7 +100,6 @@ if [[ -d "$ROOT_DIR/.venv" ]]; then
 fi
 
 log "🐍 Ensuring Python $PYTHON_VERSION is available..."
-# Verify version exists in UV's list
 if ! uv python list --all | grep -q "$PYTHON_VERSION"; then
     log "📥 Python $PYTHON_VERSION not found in UV's distribution list. Installing..."
     uv python install "$PYTHON_VERSION" || { 
@@ -145,26 +109,19 @@ if ! uv python list --all | grep -q "$PYTHON_VERSION"; then
     }
 fi
 
-# Pin and verify version
 uv python pin "$PYTHON_VERSION" || { 
     log "❌ Failed to pin Python version $PYTHON_VERSION";
     exit 1; 
 }
 
-# Create fresh virtual environment
 log "🔄 Creating new virtual environment..."
 uv venv || { log "❌ Failed to create virtual environment"; exit 1; }
 
-# Verify active Python version
 log "🔍 Verifying Python version in virtual environment..."
 source "$ROOT_DIR/.venv/bin/activate"
 ACTIVE_VERSION=$(python --version 2>&1 | awk '{print $2}')
 if [[ "$ACTIVE_VERSION" != "$PYTHON_VERSION" ]]; then
-    log "❌ Critical error: Virtual environment is using Python $ACTIVE_VERSION instead of $PYTHON_VERSION";
-    log "💡 Try these steps:";
-    log "1. Delete the .venv directory: rm -rf .venv";
-    log "2. Verify Python installation: uv python list --all";
-    log "3. Run the setup script again";
+    log "❌ Virtual environment is using Python $ACTIVE_VERSION instead of $PYTHON_VERSION";
     exit 1;
 else
     log "✅ Successfully using Python $PYTHON_VERSION";
@@ -176,23 +133,10 @@ cd "$ROOT_DIR" || { log "❌ Failed to enter project root directory: $ROOT_DIR";
 log "📦 Initializing UV project..."
 uv init || { log "❌ Failed to initialize UV project"; exit 1; }
 
-ensure_python_package
+create_setup_py
 
-create_gitignore
-create_env_file
-check_env_vars
-
-log "🔄 Creating virtual environment and syncing dependencies..."
-uv venv || { log "❌ Failed to create virtual environment"; exit 1; }
-uv pip sync || { log "❌ Failed to sync dependencies"; exit 1; }
-
-
-install_dependencies
-
-log "📦 Installing project in editable mode..."
-uv pip install -e . || { log "❌ Failed to install project in editable mode"; exit 1; }
-
-run_module_test
+log "📦 Installing dependencies..."
+install_package
 
 log "🎉 Project setup complete!"
 echo -e "\nTo start working on your project:"
