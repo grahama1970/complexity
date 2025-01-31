@@ -1,0 +1,49 @@
+ET embedding_results = (
+    FOR doc IN {view_name}
+    LET similarity = COSINE_SIMILARITY(doc.embedding, @emb)
+    FILTER similarity >= 0
+    SORT similarity DESC
+    LIMIT @top_k
+    RETURN {{
+        doc: doc,
+        similarity_score: similarity,
+        bm25_score: 0
+    }}
+)
+
+LET bm25_results = (
+    FOR doc IN {view_name}
+    SEARCH ANALYZER(
+        doc.question IN TOKENS(@text, "text_en"),
+        "text_en"
+    )
+    LET bm25_score = BM25(doc)
+    SORT bm25_score DESC
+    LIMIT @top_k
+    RETURN {{
+        doc: doc,
+        similarity_score: 0,
+        bm25_score: bm25_score
+    }}
+)
+
+LET merged_results = (
+    FOR result IN UNION_DISTINCT(embedding_results, bm25_results)
+    COLLECT doc = result.doc INTO group = result
+    LET similarity_score = MAX(group[*].similarity_score)
+    LET bm25_score       = MAX(group[*].bm25_score)
+    RETURN {{
+        "doc": doc,
+        "similarity_score": similarity_score,
+        "bm25_score": bm25_score
+    }}
+)
+
+LET final_results = (
+    FOR mr IN merged_results
+    SORT mr.similarity_score DESC, mr.bm25_score DESC
+    LIMIT @top_k
+    RETURN mr
+)
+
+RETURN final_results

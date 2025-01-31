@@ -1,4 +1,4 @@
-from complexity.file_utils import get_project_root, load_env_file
+from complexity.utils.file_utils import get_project_root, load_env_file
 import torch
 from transformers import (
     DistilBertTokenizerFast, 

@@ -4,6 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
+
 def load_text_file(file_path):
     """
     Loads the content of a text file (e.g., AQL query) from the given path.
@@ -84,6 +85,23 @@ def load_env_file(env_name=None):
         f"not found in any known locations."
     )
 
+
+def load_aql_query(project_root: str, filename: str) -> str:
+    """
+    Load an AQL query from a file.
+    """
+    try:
+        
+        
+        file_path = Path(project_root / 'utils/aql' / filename)
+        with open(file_path, "r") as file:
+            return file.read()
+    except FileNotFoundError:
+        logger.error(f"File not found: {filename}")
+        raise
+    except Exception as e:
+        logger.error(f"Error loading AQL query {filename}: {e}")
+        raise
 
 if __name__ == "__main__":
     load_env_file()

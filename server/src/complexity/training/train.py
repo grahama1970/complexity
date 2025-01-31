@@ -15,6 +15,7 @@ from loguru import logger
 import os
 from dotenv import load_dotenv
 from torch.utils.tensorboard import SummaryWriter
+from huggingface_hub import HfApi, notebook_login
 
 from complexity.utils import (
     preprocess_function, 
@@ -24,7 +25,7 @@ from complexity.utils import (
     log_system_metrics,
     TrainingSummaryCallback
 )
-from complexity.file_utils import get_project_root, load_env_file
+from complexity.utils.file_utils import get_project_root, load_env_file
 
 # Load environment variables
 PROJECT_ROOT = get_project_root()
@@ -38,6 +39,8 @@ MODEL_NAME = "distilbert-base-uncased"
 DATASET_NAME = "wesley7137/question_complexity_classification"
 OUTPUT_DIR = f"{PROJECT_ROOT}/model"
 HF_TOKEN = os.getenv("HF_TOKEN")  # Load the token from .env
+HF_USERNAME = os.getenv("HF_USERNAME")  # Replace with your username
+HF_MODEL_NAME = "question-complexity-classifier"
 
 # Check if high-speed download is enabled
 if os.getenv("HF_HUB_ENABLE_HF_TRANSFER", "False").lower() == "true":
@@ -119,7 +122,7 @@ def load_and_prepare_data():
         raise
 
 
-def train_model(num_epochs, early_stopping_patience):
+def train_model(num_epochs, early_stopping_patience, push_to_hub=False):
     """Train the DistilBERT model for question complexity classification."""
     try:
         # Create all needed directories
@@ -233,8 +236,41 @@ def train_model(num_epochs, early_stopping_patience):
         logger.info(f"TensorBoard log directory: {TENSORBOARD_DIR}")
         logger.info(f"Directory exists: {TENSORBOARD_DIR.exists()}")
         logger.info(f"Files in log dir: {list(TENSORBOARD_DIR.glob('*'))}")
+
+        if push_to_hub:
+            logger.info("Pushing model to Hugging Face Hub...")
+            push_to_huggingface_hub()
     except Exception as e:
         logger.error(f"Training failed: {e}")
+
+
+def push_to_huggingface_hub():
+    """Push trained model to Hugging Face Hub."""
+    try:
+        logger.info("Logging into Hugging Face Hub...")
+        notebook_login()  # Will open browser for authentication
+        
+        api = HfApi()
+        repo_id = f"{HF_USERNAME}/{HF_MODEL_NAME}"
+        
+        logger.info(f"Creating repository: {repo_id}")
+        api.create_repo(
+            repo_id=repo_id,
+            repo_type="model",
+            exist_ok=True
+        )
+        
+        logger.info(f"Uploading model from {OUTPUT_DIR}")
+        api.upload_folder(
+            folder_path=OUTPUT_DIR,
+            repo_id=repo_id,
+            commit_message=f"Add trained {HF_MODEL_NAME} v1.0"
+        )
+        
+        logger.success(f"Model pushed to https://huggingface.co/{repo_id}")
+    except Exception as e:
+        logger.error(f"Failed to push model: {e}")
+        raise
 
 
 if __name__ == "__main__":
@@ -254,4 +290,6 @@ if __name__ == "__main__":
         f"Determined training settings: {num_epochs} epochs, {early_stopping_patience} patience"
     )
 
-    train_model(num_epochs, early_stopping_patience)
+    train_model(
+        num_epochs, early_stopping_patience, push_to_hub=True
+    )
