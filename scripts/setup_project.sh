@@ -127,6 +127,23 @@ EOF
     fi
 }
 
+check_git_config() {
+    log "🔍 Checking Git configuration..."
+    if ! git config --global --get user.name >/dev/null 2>&1; then
+        log "❌ Git user.name not configured"
+        log "💡 Run: git config --global user.name 'Your Name'"
+        exit 1
+    fi
+    
+    if ! git config --global --get user.email >/dev/null 2>&1; then
+        log "❌ Git user.email not configured"
+        log "💡 Run: git config --global user.email 'your.email@example.com'"
+        exit 1
+    fi
+    
+    log "✅ Git configuration valid"
+}
+
 # ========================
 # 🚀 Main Script Logic
 # ========================
@@ -183,6 +200,8 @@ cd "$ROOT_DIR" || { log "❌ Failed to enter project root directory: $ROOT_DIR";
 
 log "📦 Initializing UV project..."
 uv init || { log "❌ Failed to initialize UV project"; exit 1; }
+
+check_git_config
 
 create_setup_py
 
