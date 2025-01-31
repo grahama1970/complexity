@@ -23,8 +23,17 @@ log() {
 }
 
 create_setup_py() {
+    # Check for requirements.txt
+    if [[ ! -f "$ROOT_DIR/scripts/requirements.txt" ]]; then
+        log "❌ requirements.txt not found in scripts directory"
+        exit 1
+    fi
+    
+    # Read requirements.txt
+    INSTALL_REQUIRES=$(grep -E '^[^#-]' "$ROOT_DIR/scripts/requirements.txt" | tr '\n' ' ')
+    
     if [[ ! -f "$ROOT_DIR/setup.py" ]]; then
-        log "📄 Creating setup.py..."
+        log "📄 Creating setup.py using requirements.txt..."
         cat << EOF > "$ROOT_DIR/setup.py"
 from setuptools import setup, find_packages
 
@@ -38,52 +47,94 @@ setup(
     packages=find_packages(where="server/src"),
     package_dir={"": "server/src"},
     install_requires=[
-        "datasets",
-        "pandas",
-        "matplotlib",
-        "seaborn",
-        "python-dotenv",
-        "litellm",
-        "requests",
-        "markdownify",
-        "tenacity>=9.0.0",
-        "loguru>=0.7.3",
-        "spacy>=3.8.4",
-        "python-arango>=8.1.4",
-        "deepmerge>=2.0",
-        "torch>=2.2.2",
-        "transformers>=4.48.1",
-        "sentence-transformers>=3.4.0",
-        "nltk>=3.9.1",
-        "pyperclip>=1.9.0",
-        "json-repair>=0.35.0",
-        "rapidfuzz>=3.11.0"
+        $INSTALL_REQUIRES
     ],
     extras_require={
         "dev": [
             "pytest",
             "ipython",
-            "jupyterlab",
+            "jupyterlab", 
             "pre-commit>=3.6.0"
         ]
     },
 )
 EOF
-        log "✅ setup.py created."
+        log "✅ setup.py created using requirements.txt"
     else
-        log "✅ setup.py already exists."
+        log "✅ setup.py already exists"
     fi
 }
 
 install_package() {
-    log "📦 Installing project in editable mode using setup.py..."
-    uv pip install -e . || { log "❌ Failed to install project in editable mode"; exit 1; }
-    log "✅ Project installed in editable mode."
+    log "📦 Installing dependencies from requirements.txt..."
+    uv pip install -r "$ROOT_DIR/scripts/requirements.txt" || { 
+        log "❌ Failed to install requirements"; 
+        exit 1; 
+    }
+    log "✅ Dependencies installed"
+}
+
+create_gitignore() {
+    if [[ ! -f "$ROOT_DIR/.gitignore" ]]; then
+        log "📄 Creating .gitignore..."
+        cat << EOF > "$ROOT_DIR/.gitignore"
+# Standard ignores
+.venv/
+.vscode/
+.env
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# VSCODE
+tempCodeRunnerFile.py
+
+# Data/logs
+data/*
+logs/*
+*.csv
+*.tsv
+*.jsonl
+
+# Tensorboard
+runs/*
+logs/*
+
+# Models
+model/*
+
+# Experimental
+experiments/
+results/*
+notebooks/
+
+# Large files
+*.pt
+*.bin
+*.h5
+*.zip
+*.tar.gz
+
+# Local development
+.DS_Store
+.idea/
+EOF
+        log "✅ .gitignore created"
+    else
+        log "✅ .gitignore already exists"
+    fi
 }
 
 # ========================
 # 🚀 Main Script Logic
 # ========================
+
+if [[ -f "$ROOT_DIR/pyproject.toml" ]]; then
+    log "❌ pyproject.toml detected - this project uses setup.py + requirements.txt"
+    exit 1
+fi
 
 log "🔍 Checking for UV installation..."
 if ! command -v uv &> /dev/null; then
@@ -137,6 +188,8 @@ create_setup_py
 
 log "📦 Installing dependencies..."
 install_package
+
+create_gitignore
 
 log "🎉 Project setup complete!"
 echo -e "\nTo start working on your project:"

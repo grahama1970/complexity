@@ -20,15 +20,23 @@ from complexity.utils import (
     preprocess_function, 
     binarize_labels, 
     compute_metrics,
-    determine_training_params
+    determine_training_params,
+    log_system_metrics,
+    TrainingSummaryCallback
 )
+from complexity.file_utils import get_project_root, load_env_file
 
 # Load environment variables
-load_dotenv("../.env")
+PROJECT_ROOT = get_project_root()
+load_env_file()
+LOG_DIR = f"{PROJECT_ROOT}/logs"
+TENSORBOARD_DIR = LOG_DIR / "runs/complexity"  # Full path to tensorboard logs
+
 
 # Configurations
 MODEL_NAME = "distilbert-base-uncased"
-OUTPUT_DIR = "./model"
+DATASET_NAME = "wesley7137/question_complexity_classification"
+OUTPUT_DIR = f"{PROJECT_ROOT}/model"
 HF_TOKEN = os.getenv("HF_TOKEN")  # Load the token from .env
 
 # Check if high-speed download is enabled
@@ -42,9 +50,8 @@ def load_and_prepare_data():
     """Correct dataset splitting implementation"""
     try:
         logger.info("Loading dataset...")
-        # Verify dataset structure first
         dataset = load_dataset(
-            "wesley7137/question_complexity_classification",
+            DATASET_NAME,
             token=HF_TOKEN
         )
 
@@ -115,14 +122,27 @@ def load_and_prepare_data():
 def train_model(num_epochs, early_stopping_patience):
     """Train the DistilBERT model for question complexity classification."""
     try:
+        # Create all needed directories
+        TENSORBOARD_DIR.mkdir(parents=True, exist_ok=True)
+        (LOG_DIR / "training_logs").mkdir(parents=True, exist_ok=True)
+        
         tokenizer, datasets = load_and_prepare_data()
 
         # Determine dataset size dynamically
         dataset_samples = len(datasets["train"])
 
-        # Initialize TensorBoard
-        writer = SummaryWriter(log_dir=os.path.abspath("./runs/complexity"))
+        # Initialize TensorBoard with proper path
+        writer = SummaryWriter(log_dir=str(TENSORBOARD_DIR))  # Convert to string explicitly
 
+        
+        # Ensure logging directory exists
+        os.makedirs(TENSORBOARD_DIR, exist_ok=True)
+        
+        # Add explicit flush
+        writer.add_text("System Info", "Training started")
+        writer.flush()
+
+        log_system_metrics(datasets, DATASET_NAME)
         logger.info("Initializing model...")
         model = DistilBertForSequenceClassification.from_pretrained(
             MODEL_NAME, num_labels=2
@@ -142,7 +162,7 @@ def train_model(num_epochs, early_stopping_patience):
             num_train_epochs=num_epochs,  # Dynamically determined
             weight_decay=0.01,
             push_to_hub=False,
-            logging_dir="./logs",
+            logging_dir=str(LOG_DIR / "training_logs"),  # Separate dir for HuggingFace logs
             load_best_model_at_end=True,  # Always load the best performing model
             metric_for_best_model="eval_accuracy",
             greater_is_better=True,
@@ -162,7 +182,8 @@ def train_model(num_epochs, early_stopping_patience):
             tokenizer=tokenizer,
             compute_metrics=compute_metrics,
             callbacks=[
-                EarlyStoppingCallback(early_stopping_patience=early_stopping_patience)
+                EarlyStoppingCallback(early_stopping_patience=early_stopping_patience),
+                TrainingSummaryCallback()
             ],  # Dynamically determined early stopping
         )
 
@@ -177,6 +198,24 @@ def train_model(num_epochs, early_stopping_patience):
                 writer.add_scalar("Accuracy/val", metrics["eval_accuracy"], epoch)
             if "train_loss" in metrics:
                 writer.add_scalar("Loss/train", metrics["train_loss"], epoch)
+            
+            # Add new metrics
+            if "eval_precision" in metrics:
+                writer.add_scalar("Precision/val", metrics["eval_precision"], epoch)
+            if "eval_recall" in metrics:
+                writer.add_scalar("Recall/val", metrics["eval_recall"], epoch)
+            if "eval_f1" in metrics:
+                writer.add_scalar("F1/val", metrics["eval_f1"], epoch)
+            if "learning_rate" in metrics:
+                writer.add_scalar("LR", metrics["learning_rate"], epoch)
+
+        # Add class distribution visualization
+        class_counts = np.bincount(datasets["train"]["labels"])
+        writer.add_histogram("Class Distribution", class_counts, bins=2)
+        
+        # Add model graph
+        dummy_input = tokenizer("Sample input", return_tensors="pt").to(model.device)
+        writer.add_graph(model, dummy_input)
 
         # Evaluate on test set
         logger.info("Evaluating on test set...")
@@ -190,6 +229,10 @@ def train_model(num_epochs, early_stopping_patience):
         tokenizer.save_pretrained(OUTPUT_DIR)
 
         logger.success("Training complete!")
+
+        logger.info(f"TensorBoard log directory: {TENSORBOARD_DIR}")
+        logger.info(f"Directory exists: {TENSORBOARD_DIR.exists()}")
+        logger.info(f"Files in log dir: {list(TENSORBOARD_DIR.glob('*'))}")
     except Exception as e:
         logger.error(f"Training failed: {e}")
 

@@ -8,16 +8,26 @@ __pycache__/
 dist/
 build/
 
+# VSCODE
+tempCodeRunnerFile.py
+
 # Data/logs
-data/
-logs/
+data/*
+logs/*
 *.csv
 *.tsv
 *.jsonl
 
+# Tensorboard
+runs/*
+logs/*
+
+# Models
+model/*
+
 # Experimental
 experiments/
-results/
+results/*
 notebooks/
 
 # Large files

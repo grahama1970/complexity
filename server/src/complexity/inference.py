@@ -1,17 +1,30 @@
+from complexity.file_utils import get_project_root, load_env_file
 import torch
-from transformers import DistilBertTokenizerFast, DistilBertForSequenceClassification
+from transformers import (
+    DistilBertTokenizerFast, 
+    DistilBertForSequenceClassification
+)
 from loguru import logger
 import os
 
-MODEL_PATH = "./model"
+PROJECT_ROOT = get_project_root()
+load_env_file('.env')
+
+MODEL_PATH = f"{PROJECT_ROOT}/model"
 
 
 def load_model():
     """Load the trained DistilBERT model and tokenizer."""
     try:
-        logger.info("Loading trained model...")
+        logger.info(f"Loading model from: {MODEL_PATH}")
+        logger.info(f"Model files present: {os.listdir(MODEL_PATH)}")
+        
         tokenizer = DistilBertTokenizerFast.from_pretrained(MODEL_PATH)
         model = DistilBertForSequenceClassification.from_pretrained(MODEL_PATH)
+        
+        # Verify model weights
+        logger.info(f"Model classifier weights: {model.classifier.weight[0,:5]}")
+        
         model.eval()  # Set model to inference mode
         return tokenizer, model
     except Exception as e:

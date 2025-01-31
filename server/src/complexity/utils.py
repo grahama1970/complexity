@@ -2,7 +2,10 @@ from transformers import DistilBertTokenizerFast
 import evaluate
 import numpy as np
 import logging
-
+from loguru import logger
+import torch
+import os
+import transformers
 logger = logging.getLogger(__name__)
 
 def hello_world():
@@ -34,10 +37,22 @@ accuracy = evaluate.load("accuracy")
 
 
 def compute_metrics(eval_pred):
-    """Compute accuracy for model evaluation."""
+    """Enhanced metrics calculation for classification"""
+    metric = evaluate.combine([
+        evaluate.load("accuracy"),
+        evaluate.load("precision"),
+        evaluate.load("recall"),
+        evaluate.load("f1")
+    ])
+    
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
-    return accuracy.compute(predictions=predictions, references=labels)
+    
+    return metric.compute(
+        predictions=predictions,
+        references=labels,
+        average="weighted"  # Use weighted averaging for imbalanced classes
+    )
 
 
 def determine_training_params(
@@ -88,6 +103,68 @@ def determine_training_params(
     )
 
     return num_epochs, early_stopping_patience
+
+
+def log_system_metrics(datasets, dataset_name):
+    """Log system configuration and dataset metrics"""
+    # System hardware metrics
+    logger.info("\nSystem Configuration:")
+    logger.info(f"PyTorch version: {torch.__version__}")
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        logger.info(f"CUDA version: {torch.version.cuda}")
+        logger.info(f"cuDNN version: {torch.backends.cudnn.version()}")
+        logger.info(f"Number of GPUs: {torch.cuda.device_count()}")
+        for i in range(torch.cuda.device_count()):
+            logger.info(f"GPU {i}: {torch.cuda.get_device_name(i)}")
+            logger.info(f"Total memory: {torch.cuda.get_device_properties(i).total_memory/1e9:.2f}GB")
+    logger.info(f"Training device: {torch.device('cuda' if torch.cuda.is_available() else 'cpu')}")
+    logger.info(f"CPU cores: {os.cpu_count()}")
+
+    # Dataset metrics
+    logger.info("\nDataset Configuration:")
+    logger.info(f"HuggingFace Dataset: https://huggingface.co/datasets/{dataset_name}")
+    for split in ["train", "val", "test"]:
+        logger.info(f"{split.capitalize()} samples: {len(datasets[split])}")
+
+    # Memory metrics
+    try:
+        import psutil
+        ram = psutil.virtual_memory()
+        logger.info(f"\nSystem RAM: {ram.total/1e9:.2f} GB total, {ram.available/1e9:.2f} GB available")
+    except ImportError:
+        logger.warning("psutil not installed - RAM information unavailable")
+
+    # Precision support
+    logger.info(f"Mixed precision support: {torch.cuda.amp.is_available() if torch.cuda.is_available() else 'N/A'}")
+
+
+class TrainingSummaryCallback(transformers.TrainerCallback):
+    """Logs final training statistics and metrics"""
+    def on_train_end(self, args, state, control, **kwargs):
+        logger = logging.getLogger(__name__)
+        if state.is_world_process_zero:
+            # Calculate total training time
+            training_time = state.log_history[-1]["train_runtime"]
+            hours = int(training_time // 3600)
+            minutes = int((training_time % 3600) // 60)
+            seconds = int(training_time % 60)
+            
+            # Get final metrics
+            final_metrics = state.log_history[-1]
+            
+            logger.info("\n🚀 Training Complete - Final Metrics:")
+            logger.info(f"⏱️  Total training time: {hours}h {minutes}m {seconds}s")
+            logger.info(f"📊 Samples/second: {final_metrics.get('train_samples_per_second', 'N/A'):.1f}")
+            logger.info(f"🔢 Total steps: {state.num_train_epochs:.0f} epochs")
+            logger.info(f"🎯 Final validation loss: {final_metrics.get('eval_loss', 'N/A'):.4f}")
+            logger.info(f"🏆 Best validation accuracy: {state.best_metric:.4f}")
+            logger.info(f"📈 Total samples processed: {state.num_training_samples * state.num_train_epochs:.0f}")
+            
+            # Log all metrics
+            for key, value in final_metrics.items():
+                if key not in ["epoch", "train_runtime", "train_samples_per_second"]:
+                    logger.info(f"{key}: {value:.4f}")
 
 
 if __name__ == "__main__":
