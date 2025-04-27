@@ -11,7 +11,7 @@
 **Important Note:** All code modifications and creations must adhere to the project's Memory Bank rules and documentation standards found in `docs/memory_bank/`.
 **Steps:**
 
-1.  [ ] **Environment Setup:**
+1.  [X] **Environment Setup:**
     *   Add `sentence-transformers` to `requirements.txt`.
     *   Ensure necessary environment variables (like `ARANGO_HOST`, `ARANGO_USER`, `ARANGO_PASSWORD`, `ARANGO_DB_NAME=memory_bank`) are set, potentially in a `.env` file.
 
