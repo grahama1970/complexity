@@ -15,7 +15,7 @@
     *   Add `sentence-transformers` to `requirements.txt`.
     *   Ensure necessary environment variables (like `ARANGO_HOST`, `ARANGO_USER`, `ARANGO_PASSWORD`, `ARANGO_DB_NAME=memory_bank`) are set, potentially in a `.env` file.
 
-2.  [ ] **Refactor `embedding_utils.py` (`server/src/complexity/utils/embedding_utils.py`):**
+2.  [X] **Refactor `embedding_utils.py` (`server/src/complexity/utils/embedding_utils.py`):**
     *   Add a new function `get_local_embedding(text: str, model_name: str = "nomic-ai/modernbert-embed-base") -> List[float]` using `sentence-transformers`.
     *   Modify the `__main__` block to test `get_local_embedding` and `cosine_similarity`. Ensure it follows validation rules.
 
