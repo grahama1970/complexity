@@ -1,0 +1,168 @@
+# ========================================
+# Project Rules and Standards
+# ========================================
+
+# ========================================
+# Global Tooling & Execution Rules
+# ========================================
+- Always use uv to add packages; do not use pip for installations.
+- We use 'uv run' for executing python and pytest scripts. We do NOT use python directly to execute scripts.
+- **Running Commands with Temporary Environment Variables:** When a task requires running a command with a specific environment variable set *only* for that command's execution (e.g., setting `MCP_TEST_BASE_URL` for pytest), **do not** rely on the simple `VAR=value command args...` syntax. **Instead, explicitly use the `env` command:**
+    ```sh
+    env VAR_NAME="var_value" command arg1 arg2...
+    ```
+  - **Example:** To run pytest targeting a local server:
+    ```sh
+    env MCP_TEST_BASE_URL="http://localhost:8005" uv run pytest -v -s tests/test_mcp_retriever_e2e_loguru.py
+    ```
+  - This ensures the variable (`MCP_TEST_BASE_URL`) is correctly set in the environment specifically for the `uv run pytest` process.
+
+# ============================================
+# VALIDATION OF EXPECTED RESULTS - HIGHEST PRIORITY
+# ============================================
+**Every usage function (`if __name__ == "__main__":` block) MUST explicitly validate results:**
+
+1. ***Define* precise expected outputs** as constants or fixtures:
+   ```python
+   EXPECTED_RESULTS = {
+     "expected_count": 2,
+     "expected_values": [1, 2],
+     "expected_properties": {"accuracy": 95.0}
+   }
+   ```
+
+2. ***Compare* actual results** against expected values using validation logic:
+   ```python
+   assert result_count == EXPECTED_RESULTS["expected_count"]
+   assert all(a == b for a, b in zip(actual_values, EXPECTED_RESULTS["expected_values"]))
+   assert actual_accuracy >= EXPECTED_RESULTS["expected_properties"]["accuracy"]
+   ```
+
+3. ***Report* validation status** clearly, with detailed error messages:
+   ```python
+   if validation_passed:
+     print("✅ VALIDATION COMPLETE - All results match expected values")
+     sys.exit(0)
+   else:
+     print("❌ VALIDATION FAILED - Results don't match expected values")
+     print(f"Expected: {expected}, Got: {actual}")
+     sys.exit(1)
+   ```
+
+4. ***NEVER* consider tasks complete** until results are validated against expected values.
+
+# ============================================
+# General Coding & Development Principles
+# ============================================
+- For all Code-specific roles: Be proactive when coding. Try to fix failed tests and code. Do NOT simply report back that the tests/code failed. Iterate until you fix the code, **starting with standalone script execution**.
+- Explain your reasoning before providing code.
+- Focus on code readability and maintainability.
+- Do NOT be clever. Always prefer the simplest solution that is most likely to work and is NOT brittle
+- **Prioritize Runtime Correctness:** While static analysis (like Pylance, MyPy) is valuable, ensure code functions correctly at runtime. Address runtime errors and logical flaws first.
+- Success is NEVER defined as "runs without errors" - proper validation is required
+- NEVER rely on absence of errors as success criteria - verify expected output
+- Be thorough in debugging - never give up without resolving issues
+- Avoid assumptions - test and verify everything
+- No task is complete until functionality is 100% verified
+- Prioritize using the most common libraries in the community.
+- Always prefer official, maintained containers or packages over custom builds when available.
+
+# ==============================
+# Code Reuse Enforcement
+# ==============================
+## Mandatory Package Check Protocol
+reuse_policy:
+  required_sources:
+    python: ["pypi", "internal-utils>=2.3"]
+    js: ["npm", "@roo/web-core"]
+  check_order:
+    - organization_registry
+    - public_registry(pypi/npm/maven)
+    - approved_vendors
+  audit_frequency: weekly
+  timeout: 120s
+  security:
+    vulnerability_scan: true
+    max_cve_age: 30d
+
+# Enhanced Coding Principles
+- **Priority 1**: Use official maintained packages before considering custom code
+- **Dependency Requirements**:
+  - Include version constraints (e.g., Pandas==2.1.3)
+  - Validate licenses using `license_checker` tool
+- **Custom Code Justification**:
+  - Create `reuse_exception.md` with cost-benefit analysis
+  - Requires Architect approval for code >50 lines
+
+# ==========================================
+# Module Structure & Documentation Rules
+# ==========================================
+- Every core module file **must** include at the top:
+  - A **description** of the module's purpose.
+  - **Links** to third-party package documentation
+  - A **sample input** and **expected output** for its main function(s).
+- Every core module file **must** include a **minimal real-world usage function** (e.g., `if __name__ == "__main__":`) that verifies its core functionality independently, without Docker.
+- No file should exceed **500 lines**; refactor into smaller modules if necessary.
+
+# ====================================
+# Mandatory Verification Sequence
+# ====================================
+- **Mandatory Post-Edit Standalone Module Verification:** For all Code-specific roles: Immediately after editing a script file, execute its `__main__` block using `uv run` before any other testing.
+- **New Pre-Code Validation**:
+  1. Run `dependency_analyzer --file=proposal.py`
+  2. Verify against `approved_packages.list`
+  3. If new packages found:
+     - Submit `security_review_request.json`
+     - Await Architect approval
+- **Mandatory Server Readiness Verification:** For any agent role starting a web server:
+  a. Identify target endpoint and health-check URL
+  b. Poll endpoint every 2s for max 30s
+  c. Proceed only after successful response
+  d. Handle connection errors gracefully
+  e. Log all polling attempts and results
+
+# ==============================================
+# Lesson Logging and Management
+# ==============================================
+- **Lesson Logging Rule:** Add concise lesson entries to ArangoDB for novel techniques/patterns.
+    - Use CLI script: `src/mcp_doc_retriever/lessons_cli.py add`
+    - Required fields: role, problem, solution, tags
+    - Environment variables: ARANGO_HOST, ARANGO_USER, ARANGO_PASSWORD, ARANGO_DB
+- **Lesson Updates:** Must be done directly in ArangoDB, CLI updates not supported
+
+# ==============================================
+# Error Handling & Debugging
+# ==============================================
+1. NEVER consider a task complete until expected output is EXACTLY achieved
+2. DO NOT move to a new task if current functionality doesn't match expected results
+3. NEVER make superficial edits to code - all changes MUST address functional issues
+4. Debugging always takes priority over stylistic improvements
+
+**Error/Ambiguity Handling Steps:**
+1. Search lessons database
+2. Check relevant documentation
+3. Review code context
+4. Analyze error patterns
+5. Test hypotheses systematically
+
+# Async Recursive Workflows Debugging
+When building or debugging async recursive workflows:
+- Add deep contextual logging
+- Propagate error messages explicitly
+- Never rely solely on inner function error handling
+- Refactor orchestration layer if needed
+- Ensure failures are observable, diagnosable, fixable
+
+# ==============================================
+# Enforcement & Consequences
+# ==============================================
+- **First offense**: Auto-revert via `git checkout -- <file>`
+- **Repeat offenses**: 24hr code submission lock
+- **Critical violations**: Trigger architectural review
+
+Package installation guardrail:
+```sh
+uv install <pkg> || {
+  echo "Failed package install - checking alternatives";
+  roo search-alternative --package=<pkg>;
+}

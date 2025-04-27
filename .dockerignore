@@ -8,3 +8,5 @@ __pycache__
 model/
 logs/
 runs/ 
+*.egg-info
+*.egg
