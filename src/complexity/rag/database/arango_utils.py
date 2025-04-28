@@ -1,7 +1,9 @@
 from typing import Dict, Any
 from loguru import logger
 from arango import ArangoClient
-from arango.exceptions import ArangoError, ServerConnectionError
+# Import specific exceptions used in the except block
+from arango.exceptions import ArangoError, ServerConnectionError, ArangoClientError, ArangoServerError
+from arango.database import StandardDatabase # Import for type hinting
 from typing import List
 
 def initialize_database(config: Dict[str, Any]):
@@ -15,94 +17,42 @@ def initialize_database(config: Dict[str, Any]):
     Returns:
         db: The connected ArangoDB database instance or None if an error occurs.
     """
+    db_name_for_log = config.get("db_name", "UNKNOWN") # For logging in except blocks
     try:
-        # Handle both standalone `arango_config` and nested `arango_config` cases
-        if "arango_config" in config:
-            arango_config = config["arango_config"]
-        else:
-            arango_config = config
+        # Use the passed config directly, assuming it contains the necessary keys
+        # Default values are handled by the caller (rag_classifier.py using os.getenv)
+        # or can be added here if preferred.
+        hosts = config.get("hosts", ["http://localhost:8529"]) # Keep default host if not provided
+        db_name = config.get("db_name") # Get db_name from config
+        username = config.get("username") # Get username from config
+        password = config.get("password") # Get password from config
 
-        # Extract configuration values with defaults
-        arango_config = config.get("arango_config", {})
-        hosts = arango_config.get("hosts", ["http://localhost:8529"])
-        db_name = arango_config.get("db_name", "verifaix")
-        username = arango_config.get("username", "root")
-        password = arango_config.get("password", "openSesame")
+        if not db_name:
+            logger.error("Database name ('db_name') not provided in config.")
+            return None
+        db_name_for_log = db_name # Update for logging if db_name is valid
 
         # Initialize the ArangoDB client
         client = ArangoClient(hosts=hosts)
 
         # Connect to the database
         db = client.db(db_name, username=username, password=password)
-        # logger.success(f"Connected to database '{db_name}'.")
+
+        # Verify connection by fetching database properties
+        db.properties() # This will raise error if DB doesn't exist or credentials fail
+
+        logger.success(f"Successfully connected to and verified database '{db_name}'.")
         return db
 
-    except ArangoError as e:
-        logger.error(f"ArangoDB error: {e}")
+    # Catch specific Arango errors during connection/verification
+    except (ArangoClientError, ArangoServerError, ArangoError) as e:
+        logger.error(f"Failed to connect/verify database '{db_name_for_log}': {e}")
         return None
-    except ServerConnectionError as e:
-        logger.error(f"Failed to connect to ArangoDB server: {e}")
-        return None
+    # Catch other unexpected errors
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Unexpected error during database initialization for '{db_name_for_log}': {e}")
         return None
 
 
-def store_docs_in_arango(db, docs: List[Dict[str, Any]], config: Dict[str, Any]):
-    """
-    Store documents in the specified Arango collection. 
-    Each doc is a dict with question, rating, label, embedding. We'll add _key.
-    """
-    coll_name = config["arango_collection"]
-    if not db.has_collection(coll_name):
-        db.create_collection(coll_name)
-        logger.info(f"Created Arango collection '{coll_name}'")
-
-    coll = db.collection(coll_name)
-
-    BATCH_SIZE = 1000
-    total = len(docs)
-    logger.info(f"Storing {total} docs in collection '{coll_name}'")
-
-    inserted = 0
-    for start_idx in range(0, total, BATCH_SIZE):
-        batch = docs[start_idx:start_idx + BATCH_SIZE]
-        to_insert = []
-        for i, d in enumerate(batch):
-            doc_copy = d.copy()
-            doc_copy["_key"] = f"doc_{start_idx + i}"
-            to_insert.append(doc_copy)
-        coll.insert_many(to_insert, overwrite=True)
-        inserted += len(batch)
-
-    logger.info(f"Inserted {inserted} documents total into ArangoDB.")
-
-
-
-def create_arangosearch_view(db, config: Dict[str, Any]):
-    """
-    Create an ArangoSearch view that indexes:
-      - question => text analyzer
-      - embedding => identity analyzer (for COSINE_SIMILARITY)
-    """
-    view_name = config["arango_view"]
-    coll_name = config["arango_collection"]
-
-    if db.has_arangosearch_view(view_name):
-        logger.info(f"View '{view_name}' exists. Dropping.")
-        db.delete_arangosearch_view(view_name)
-
-    logger.info(f"Creating view '{view_name}'...")
-
-    properties = {
-        "links": {
-            coll_name: {
-                "fields": {
-                    "question": {"analyzers": ["text_en"]},
-                    "embedding": {"analyzers": ["identity"]},
-                }
-            }
-        }
-    }
-    db.create_arangosearch_view(view_name, properties=properties)
-    logger.info(f"ArangoSearch view '{view_name}' created successfully.")
+# Functions store_docs_in_arango and create_arangosearch_view removed as per Task 4.
+# Their functionality is handled by src/complexity/utils/arango_setup.py

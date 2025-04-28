@@ -19,7 +19,7 @@
     *   Add a new function `get_local_embedding(text: str, model_name: str = "nomic-ai/modernbert-embed-base") -> List[float]` using `sentence-transformers`.
     *   Modify the `__main__` block to test `get_local_embedding` and `cosine_similarity`. Ensure it follows validation rules.
 
-3.  [ ] **Refactor `arango_setup.py` (`server/src/complexity/utils/arango_setup.py`):**
+3.  [X] **Refactor `arango_setup.py` (`server/src/complexity/utils/arango_setup.py`):**
     *   Update configuration constants (or load from env vars) to use `ARANGO_DB_NAME='memory_bank'`, `COLLECTION_NAME='complexity'`, `VIEW_NAME='complexity_view'`.
     *   Remove `pdf_extractor` specific imports/logic if no longer needed.
     *   Verify `EMBEDDING_DIMENSIONS` matches `modernbert-embed-base` (768).
