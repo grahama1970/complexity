@@ -3,7 +3,7 @@ import sys
 import os
 import requests
 import torch
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 from loguru import logger
 from datasets import load_dataset, Dataset
 from tqdm.auto import tqdm
@@ -121,6 +121,51 @@ def ensure_arangosearch_view(db):
         logger.exception(f"View setup failed: {e}")
         sys.exit(1)
 
+def ensure_edge_collections(db):
+    """Ensure edge collections for relationships exist."""
+    try:
+        # Get list of all collections in the database
+        existing_collections = [c['name'] for c in db.collections()]
+        
+        # Create each edge collection if it doesn't exist
+        edge_collections = ["prerequisites", "related_topics"]  # Define edge collections directly
+        
+        for collection_name in edge_collections:
+            if collection_name not in existing_collections:
+                logger.info(f"Creating edge collection '{collection_name}'")
+                db.create_collection(collection_name, edge=True)
+            logger.info(f"Edge collection '{collection_name}' ready")
+    except Exception as e:
+        logger.exception(f"Edge collection setup failed: {e}")
+        sys.exit(1)
+
+def ensure_graph(db):
+    """Ensure named graph exists for traversals."""
+    try:
+        graph_name = "complexity_graph"
+        
+        # Get list of existing graphs
+        existing_graphs = [g['name'] for g in db.graphs()]
+        
+        # Define edge collections directly
+        edge_collections = ["prerequisites", "related_topics"]
+        collection_name = CONFIG["search"]["collection_name"]
+        
+        if graph_name not in existing_graphs:
+            logger.info(f"Creating graph '{graph_name}'")
+            edge_definitions = []
+            for edge_collection in edge_collections:
+                edge_definitions.append({
+                    "edge_collection": edge_collection,
+                    "from_vertex_collections": [collection_name],
+                    "to_vertex_collections": [collection_name]
+                })
+            db.create_graph(graph_name, edge_definitions)
+        logger.info(f"Graph '{graph_name}' ready")
+    except Exception as e:
+        logger.exception(f"Graph setup failed: {e}")
+        sys.exit(1)
+
 def load_and_index_dataset(db: StandardDatabase, EmbedderModel=None) -> None:
     """Load dataset, embed texts with progress bars, and insert into collection."""
     logger.info("Loading dataset...")
@@ -195,19 +240,38 @@ def ensure_vector_index(db:StandardDatabase):
     """Ensure vector index after data insertion."""
     try:
         col = db.collection(CONFIG["search"]["collection_name"])
-        if col.count() < 3:
-            logger.error(f"Collection has {col.count()} documents; need at least 3 to create vector index")
+        doc_count = col.count()
+        
+        if doc_count < 3:
+            logger.error(f"Collection has {doc_count} documents; need at least 3 to create vector index")
             sys.exit(1)
 
+        # Log current indexes for debugging
+        current_indexes = list(col.indexes())
+        logger.info(f"Current indexes: {len(current_indexes)}")
+        
         # Drop existing vector index if present
-        for idx in col.indexes():
-            if idx.get("name") == "vector_index":
-                logger.info(f"Dropping existing vector_index (id={idx.get('id')})")
-                col.delete_index(idx.get("id"))
+        vector_index = None
+        for idx in current_indexes:
+            if idx.get("type") == "vector":
+                vector_index = idx
+                logger.info(f"Found existing vector index: {idx.get('name')} (id={idx.get('id')})")
+                
+                # Check if index has correct dimensions
+                params = idx.get("params", {})
+                current_dimension = params.get("dimension", 0)
+                if (current_dimension != CONFIG["embedding"]["dimensions"] or 
+                    idx.get("fields", []) != [CONFIG["embedding"]["field"]]):
+                    logger.info(f"Dropping incompatible vector index: current dimension={current_dimension}, needed={CONFIG['embedding']['dimensions']}")
+                    col.delete_index(idx.get("id"))
+                    vector_index = None
+                else:
+                    logger.info(f"Existing vector index is compatible")
                 break
-
-        # Create new vector index with correct dimensions
-        try:
+        
+        # Create new vector index if needed
+        if not vector_index:
+            # Create new vector index with correct dimensions
             cfg = {
                 "type": "vector",
                 "fields": [CONFIG["embedding"]["field"]],
@@ -219,45 +283,89 @@ def ensure_vector_index(db:StandardDatabase):
                 "name": "vector_index"
             }
             
-            result = col.add_index(cfg)
-            logger.info(f"Index creation result: {result}")
-        except Exception as e:
-            logger.exception("Exception creating vector index:", e)
+            logger.info(f"Creating vector index with dimension {CONFIG['embedding']['dimensions']}")
+            try:
+                result = col.add_index(cfg)
+                logger.info(f"Index creation result: {result}")
+            except Exception as e:
+                logger.exception(f"Exception creating vector index: {e}")
+                raise
 
         # Validate index
-        vector_index = [
-            idx for idx in col.indexes()
-            if idx.get("name") == "vector_index" and idx.get("type") == "vector"
+        updated_indexes = list(col.indexes())
+        vector_indexes = [
+            idx for idx in updated_indexes
+            if idx.get("type") == "vector" and CONFIG["embedding"]["field"] in idx.get("fields", [])
         ]
-        if not vector_index:
-            logger.error("Vector index not found after creation")
+        
+        if not vector_indexes:
+            logger.error("Vector index not found after creation attempt")
             sys.exit(1)
             
-        logger.info("Vector index created successfully")
+        # Check the dimensions
+        vector_idx = vector_indexes[0]
+        params = vector_idx.get("params", {})
+        current_dim = params.get("dimension", 0)
+        if current_dim != CONFIG["embedding"]["dimensions"]:
+            logger.error(f"Vector index dimension mismatch: current={current_dim}, needed={CONFIG['embedding']['dimensions']}")
+            sys.exit(1)
+            
+        logger.info(f"Vector index verified successfully: dimension={current_dim}, metric={params.get('metric', 'unknown')}")
     
-    except IndexCreateError as e:
+    except Exception as e:
         logger.exception(f"Vector index creation failed: {e}")
         sys.exit(1)
 
-
-def classify_complexity(db: StandardDatabase, question: str, k: int = None) -> Tuple[int, float, bool]:
-    """Classify question complexity using semantic search."""
+def classify_complexity(db: StandardDatabase, question: str, k: int = None, return_neighbors: bool = False) -> Tuple[int, float, bool, Optional[List[Dict]]]:
+    """
+    Classify question complexity using semantic search.
+    
+    Args:
+        db: Database connection
+        question: Question to classify
+        k: Number of neighbors to consider
+        return_neighbors: Whether to return neighbor documents
+        
+    Returns:
+        Tuple of (label, confidence, auto_accept, neighbors)
+    """
     k = k or CONFIG["classification"]["default_k"]
     try:
         emb = get_EmbedderModel().embed_batch([question])[0]
         
-        aql = f"""
-        FOR doc IN {CONFIG['search']['collection_name']}
-            LET score = COSINE_SIMILARITY(doc.{CONFIG['embedding']['field']}, @emb)
-            SORT score DESC
-            LIMIT @k
-            RETURN {{ label: doc.label, score: score }}
-        """
+        collection_name = CONFIG["search"]["collection_name"]
+        embedding_field = CONFIG["embedding"]["field"]
+        
+        if return_neighbors:
+            # Query that returns full document information
+            aql = f"""
+            FOR doc IN {collection_name}
+                LET score = COSINE_SIMILARITY(doc.{embedding_field}, @emb)
+                SORT score DESC
+                LIMIT @k
+                RETURN {{ 
+                    label: doc.label, 
+                    score: score, 
+                    question: doc.question,
+                    id: doc._id,
+                    embedding: doc.{embedding_field}
+                }}
+            """
+        else:
+            # Simpler query that only returns label and score
+            aql = f"""
+            FOR doc IN {collection_name}
+                LET score = COSINE_SIMILARITY(doc.{embedding_field}, @emb)
+                SORT score DESC
+                LIMIT @k
+                RETURN {{ label: doc.label, score: score }}
+            """
+            
         cursor = db.aql.execute(aql, bind_vars={"emb": emb, "k": k})
         results = list(cursor)
         if not results:
             logger.warning("No neighbors found")
-            return 0, 0.0, False
+            return (0, 0.0, False, []) if return_neighbors else (0, 0.0, False)
         
         votes = {0: 0.0, 1: 0.0}
         total = 0.0
@@ -272,18 +380,21 @@ def classify_complexity(db: StandardDatabase, question: str, k: int = None) -> T
                 total += weight
                 
         if total <= 0:
-            return 0, 0.0, False
+            return (0, 0.0, False, []) if return_neighbors else (0, 0.0, False)
             
         majority = max(votes, key=votes.get)
         confidence = votes[majority] / total
         auto_accept = confidence >= CONFIG["classification"]["confidence_threshold"] and len(results) >= k
         
         logger.info(f"Classification: label={majority}, confidence={confidence:.2f}, auto_accept={auto_accept}")
+        
+        if return_neighbors:
+            return majority, confidence, auto_accept, results
         return majority, confidence, auto_accept
         
     except Exception as e:
         logger.exception(f"Classification failed: {e}")
-        return 0, 0.0, False
+        return (0, 0.0, False, []) if return_neighbors else (0, 0.0, False)
 
 if __name__ == "__main__":
     logger.remove()

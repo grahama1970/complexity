@@ -33,6 +33,9 @@ from complexity.beta.utils.arango_setup import (
     load_and_index_dataset
 )
 from complexity.utils.file_utils import get_project_root, load_env_file
+from complexity.beta.utils.relationship_builder import RelationshipBuilder
+from complexity.beta.utils.enhanced_classifier import enhanced_classify_complexity
+
 from pathlib import Path
 import os
 import time
@@ -420,6 +423,60 @@ if __name__ == "__main__":
         
         logger.info(f"Using embedding model: {embedder.model_name if hasattr(embedder, 'model_name') else CONFIG['embedding']['model_name']}")
         
+        
+        # Set up graph relationships
+        logger.info("Initializing relationship builder and creating graph structure")
+        ensure_edge_collections(db)
+        ensure_graph(db)
+        relationship_builder = RelationshipBuilder(db)
+        relationship_builder.generate_all_relationships()
+
+        # Add this code to the main function after the original test_classifier call
+            
+        # Run enhanced evaluation with graph traversal
+        logger.info("Running enhanced classification with graph traversal")
+        graph_enhanced_results = []
+            
+        # Test a sample of questions with the graph-enhanced classifier
+        sample_questions = test_dataset.select(range(min(30, len(test_dataset))))
+        true_labels = [1 if float(item.get("rating")) >= 0.5 else 0 for item in sample_questions]
+        predictions = []
+            
+        for item in tqdm(sample_questions, desc="Testing graph-enhanced classification"):
+            question = item.get("question")
+            result = enhanced_classify_complexity(db, question, with_explanation=True)
+            predictions.append(1 if result["classification"] == "Complex" else 0)
+            graph_enhanced_results.append(result)
+            
+        # Calculate metrics for graph-enhanced classification
+        g_accuracy = accuracy_score(true_labels, predictions)
+        g_precision = precision_score(true_labels, predictions, average="binary", zero_division=0)
+        g_recall = recall_score(true_labels, predictions, average="binary", zero_division=0)
+        g_f1 = f1_score(true_labels, predictions, average="binary", zero_division=0)
+            
+        logger.info(f"Graph-enhanced classification results: accuracy={g_accuracy:.3f}, "
+                    f"precision={g_precision:.3f}, recall={g_recall:.3f}, f1={g_f1:.3f}")
+            
+        # Include graph-enhanced results in the final report
+        graph_enhanced_metrics = {
+            "accuracy": g_accuracy,
+            "precision": g_precision,
+            "recall": g_recall,
+            "f1_score": g_f1
+        }
+            
+        # Update the generate_final_report function call to include graph-enhanced results
+        final_report = generate_final_report(
+            semantic_results, 
+            baseline_results, 
+            distilbert_results, 
+            graph_enhanced_metrics,
+            db_stats
+        )
+
+
+
+
         # Run evaluations with timing
         semantic_start = time.time()
         semantic_results = test_classifier(db, test_dataset, k_values=[5, 7, 10, 20, 25], use_hybrid=False)
