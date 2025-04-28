@@ -18,8 +18,8 @@ CONFIG = {
         "split": "train",
     },
     "embedding": {
-        "model_name": "nomic-ai/nomic-embed-text-v1",
-        "dimensions": 768,  # nomic-embed-text-v1
+        "model_name": "BAAI/bge-large-en-v1.5",  # Changed to BGE model
+        "dimensions": 1024,  # BGE model dimensions (different from nomic's 768)
         "field": "embedding",
         "batch_size": 32,
     },

@@ -23,11 +23,20 @@ from transformers import DistilBertTokenizerFast, DistilBertForSequenceClassific
 import torch
 from tabulate import tabulate
 from complexity.beta.utils.config import CONFIG
-from complexity.rag.rag_classifier import ModernBertEmbedder, DOC_PREFIX
-from complexity.beta.utils.classifier import classify_complexity, get_embedder
-from complexity.beta.utils.arango_setup import connect_arango, ensure_database, ensure_collection, ensure_arangosearch_view, ensure_vector_index
-from complexity.beta.utils.data_loader import load_and_index_dataset
+from complexity.beta.rag.rag_classifier import EmbedderModel, DOC_PREFIX
+from complexity.beta.utils.config import CONFIG  # Import CONFIG directly for model info
+from complexity.beta.utils.classifier import classify_complexity, get_EmbedderModel
+from complexity.beta.utils.arango_setup import (
+    connect_arango, 
+    ensure_database, 
+    ensure_collection, 
+    ensure_arangosearch_view, 
+    ensure_vector_index,
+    load_and_index_dataset
+)
 from complexity.utils.file_utils import get_project_root, load_env_file
+from pathlib import Path
+import os
 
 # Load environment variables
 PROJECT_ROOT = get_project_root()
@@ -95,7 +104,13 @@ def test_classifier(db: StandardDatabase, test_dataset: Dataset, k_values: List[
     logger.info(f"Testing {method} with k={k_values} on {len(test_dataset)} test samples")
     
     results = []
-    embedder = get_embedder()
+    EmbedderModel = get_EmbedderModel()
+    
+    # Print the actual embedding model being used
+    if hasattr(EmbedderModel, 'model_name'):
+        logger.info(f"Using embedding model: {EmbedderModel.model_name}")
+    else:
+        logger.info(f"Using embedding model: {EMBEDDING_MODEL_NAME}")
     
     for k in k_values:
         logger.info(f"Evaluating with k={k}")
@@ -119,7 +134,7 @@ def test_classifier(db: StandardDatabase, test_dataset: Dataset, k_values: List[
                 confidences.append(confidence)
                 if use_hybrid:
                     neighbor_embeddings = [n["embedding"] for n in neighbors]
-                    avg_embedding = np.mean(neighbor_embeddings, axis=0) if neighbor_embeddings else embedder.embed_batch([question], prefix=DOC_PREFIX)[0]
+                    avg_embedding = np.mean(neighbor_embeddings, axis=0) if neighbor_embeddings else EmbedderModel.embed_batch([question], prefix=DOC_PREFIX)[0]
                     features.append(avg_embedding)
         
         # Train and evaluate hybrid model if enabled
@@ -131,7 +146,7 @@ def test_classifier(db: StandardDatabase, test_dataset: Dataset, k_values: List[
             for text in tqdm(train_texts, desc=f"Extracting k-NN features (k={k})"):
                 _, _, neighbors = classify_complexity(db, text, k)
                 neighbor_embeddings = [n["embedding"] for n in neighbors]
-                avg_embedding = np.mean(neighbor_embeddings, axis=0) if neighbor_embeddings else embedder.embed_batch([text], prefix=DOC_PREFIX)[0]
+                avg_embedding = np.mean(neighbor_embeddings, axis=0) if neighbor_embeddings else EmbedderModel.embed_batch([text], prefix=DOC_PREFIX)[0]
                 train_features.append(avg_embedding)
             
             # Train logistic regression
@@ -192,11 +207,11 @@ def train_baseline_model(train_dataset: Dataset, test_dataset: Dataset) -> Dict:
     train_labels = [1 if float(item["rating"]) >= 0.5 else 0 for item in train_dataset]
     
     # Generate embeddings with tqdm
-    embedder = get_embedder()
+    EmbedderModel = get_EmbedderModel()
     train_embeddings = []
     for i in tqdm(range(0, len(train_texts), CONFIG["embedding"]["batch_size"]), desc="Embedding train data"):
         batch = train_texts[i:i + CONFIG["embedding"]["batch_size"]]
-        batch_embs = embedder.embed_batch(batch, prefix=DOC_PREFIX)
+        batch_embs = EmbedderModel.embed_batch(batch, prefix=DOC_PREFIX)
         train_embeddings.extend(batch_embs)
     
     # Train logistic regression
@@ -209,7 +224,7 @@ def train_baseline_model(train_dataset: Dataset, test_dataset: Dataset) -> Dict:
     test_embeddings = []
     for i in tqdm(range(0, len(test_texts), CONFIG["embedding"]["batch_size"]), desc="Embedding test data"):
         batch = test_texts[i:i + CONFIG["embedding"]["batch_size"]]
-        batch_embs = embedder.embed_batch(batch, prefix=DOC_PREFIX)
+        batch_embs = EmbedderModel.embed_batch(batch, prefix=DOC_PREFIX)
         test_embeddings.extend(batch_embs)
     
     # Evaluate
@@ -325,72 +340,17 @@ def test_distilbert_model(test_dataset: Dataset) -> Dict:
         logger.exception(f"DistilBERT evaluation failed: {e}")
         raise
 
-def simulate_data_growth(db: StandardDatabase, dataset: Dataset, initial_size: int = 100, step_size: int = 100, max_size: int = 500) -> List[Dict]:
-    """Simulate adding new data to the collection and re-evaluate performance."""
-    logger.info("Simulating data growth for semantic search")
-    results = []
-    
-    # Split dataset into initial and incremental parts
-    initial_data = dataset.select(range(initial_size))
-    remaining_data = dataset.select(range(initial_size, len(dataset)))
-    
-    # Index initial data
-    col = db.collection(CONFIG["search"]["collection_name"])
-    col.truncate()
-    texts = [item["question"] for item in initial_data]
-    labels = [1 if float(item["rating"]) >= 0.5 else 0 for item in initial_data]
-    embeddings = get_embedder().embed_batch(texts, prefix=DOC_PREFIX)
-    docs = [
-        {"question": q, "label": l, "validated": True, CONFIG["embedding"]["field"]: e}
-        for q, l, e in zip(texts, labels, embeddings)
-    ]
-    col.insert_many(docs)
-    ensure_vector_index(db)
-    
-    # Evaluate initial performance
-    test_results = test_classifier(db, initial_data)
-    test_results["dataset_size"] = initial_size
-    results.append(test_results)
-    
-    # Incrementally add data
-    for i in range(0, min(max_size - initial_size, len(remaining_data)), step_size):
-        batch = remaining_data.select(range(i, min(i + step_size, len(remaining_data))))
-        texts = [item["question"] for item in batch]
-        labels = [1 if float(item["rating"]) >= 0.5 else 0 for item in batch]
-        embeddings = get_embedder().embed_batch(texts, prefix=DOC_PREFIX)
-        docs = [
-            {"question": q, "label": l, "validated": True, CONFIG["embedding"]["field"]: e}
-            for q, l, e in zip(texts, labels, embeddings)
-        ]
-        col.insert_many(docs)
-        ensure_vector_index(db)
-        
-        # Re-evaluate
-        test_results = test_classifier(db, initial_data)
-        test_results["dataset_size"] = initial_size + i + step_size
-        results.append(test_results)
-    
-    # Plot performance over dataset size
-    df = pd.DataFrame(results)
-    plt.figure(figsize=(10, 6))
-    plt.plot(df["dataset_size"], df["accuracy"], label="Accuracy")
-    plt.plot(df["dataset_size"], df["f1_score"], label="F1-Score")
-    plt.xlabel("Dataset Size")
-    plt.ylabel("Metric Value")
-    plt.title("Semantic Search Performance vs. Dataset Size")
-    plt.legend()
-    plt.savefig("data_growth_performance.png")
-    plt.close()
-    
-    return results
-
-def generate_final_report(semantic_results: Dict, baseline_results: Dict, distilbert_results: Dict, growth_results: List[Dict], db_stats: Dict) -> str:
+def generate_final_report(semantic_results: Dict, baseline_results: Dict, distilbert_results: Dict, db_stats: Dict) -> str:
     """Generate a formatted final report comparing semantic classification and DistilBERT model."""
+    # Get information about embedding model 
+    EmbedderModel = get_EmbedderModel()
+    embedding_model = getattr(EmbedderModel, 'model_name', EMBEDDING_MODEL_NAME)
+    
     # Model comparison table
     table = [
         ["Model", "Accuracy", "Precision", "Recall", "F1-Score"],
         [
-            f"Semantic Classification (Majority Vote, k={semantic_results['k']})",
+            f"Semantic Classification ({embedding_model}, k={semantic_results['k']})",
             f"{semantic_results['accuracy']:.3f}",
             f"{semantic_results['precision']:.3f}",
             f"{semantic_results['recall']:.3f}",
@@ -418,21 +378,21 @@ def generate_final_report(semantic_results: Dict, baseline_results: Dict, distil
     report += "\n=== Effectiveness Analysis ===\n"
     if distilbert_results["accuracy"] > semantic_results["accuracy"]:
         report += (
-            f"The DistilBERT trained model is more effective than semantic classification with majority vote (k={semantic_results['k']}), "
+            f"The DistilBERT trained model is more effective than semantic classification with {embedding_model} (k={semantic_results['k']}), "
             f"achieving higher accuracy ({distilbert_results['accuracy']:.3f} vs. {semantic_results['accuracy']:.3f}). "
             f"DistilBERT also shows superior precision ({distilbert_results['precision']:.3f} vs. {semantic_results['precision']:.3f}), "
             f"but semantic classification has higher recall ({semantic_results['recall']:.3f} vs. {distilbert_results['recall']:.3f})."
         )
     elif distilbert_results["accuracy"] < semantic_results["accuracy"]:
         report += (
-            f"Semantic classification with majority vote (k={semantic_results['k']}) is more effective than the DistilBERT trained model, "
+            f"Semantic classification with {embedding_model} (k={semantic_results['k']}) is more effective than the DistilBERT trained model, "
             f"achieving higher accuracy ({semantic_results['accuracy']:.3f} vs. {distilbert_results['accuracy']:.3f}). "
             f"Semantic classification also excels in recall ({semantic_results['recall']:.3f} vs. {distilbert_results['recall']:.3f}), "
             f"while DistilBERT may have better precision ({distilbert_results['precision']:.3f} vs. {semantic_results['precision']:.3f})."
         )
     else:
         report += (
-            f"Semantic classification with majority vote (k={semantic_results['k']}) and the DistilBERT trained model are equally effective in accuracy "
+            f"Semantic classification with {embedding_model} (k={semantic_results['k']}) and the DistilBERT trained model are equally effective in accuracy "
             f"({semantic_results['accuracy']:.3f}). However, differences in precision ({semantic_results['precision']:.3f} vs. "
             f"{distilbert_results['precision']:.3f}) and recall ({semantic_results['recall']:.3f} vs. {distilbert_results['recall']:.3f}) "
             f"may influence their suitability depending on the use case."
@@ -451,23 +411,6 @@ def generate_final_report(semantic_results: Dict, baseline_results: Dict, distil
         ],
         headers=["Metric", "Value"],
         tablefmt="grid",
-    )
-    
-    # Data growth summary
-    growth_summary = [
-        ["Dataset Size", "Accuracy", "F1-Score"],
-        *[
-            [r["dataset_size"], f"{r['accuracy']:.3f}", f"{r['f1_score']:.3f}"]
-            for r in growth_results
-        ],
-    ]
-    report += "\n=== Semantic Classification Data Growth Summary ===\n"
-    report += tabulate(growth_summary, headers="firstrow", tablefmt="grid")
-    report += (
-        f"\nNote: Semantic classification scales without retraining, with accuracy ranging from "
-        f"{min(r['accuracy'] for r in growth_results):.3f} to {max(r['accuracy'] for r in growth_results):.3f} "
-        f"as dataset size increases from {min(r['dataset_size'] for r in growth_results)} to "
-        f"{max(r['dataset_size'] for r in growth_results)}."
     )
     
     return report
@@ -535,29 +478,27 @@ if __name__ == "__main__":
         logger.info("Cleaning and balancing ArangoDB collection")
         db_stats = clean_and_balance_collection(db)
         
-        # Index training data for semantic search with log suppression
-        logger.info("Indexing dataset for semantic search")
-        logger.remove()
-        logger.add(sys.stderr, level="WARNING")
-        logger.add(tqdm_sink, level="INFO")
-        logger.add(tqdm_sink, level="DEBUG")
-        load_and_index_dataset(db, model_name=CONFIG["embedding"]["model_name"])    
-        logger.remove()
-        logger.add(sys.stderr, level="DEBUG")
-        
-        # Ensure vector index
+        # CRITICAL: Create a new BGE EmbedderModel and reindex the database with it
+        logger.info("Initializing BGE EmbedderModel and reindexing the database")
+        EmbedderModel = EmbedderModel(CONFIG["embedding"]["model_name"])
+        load_and_index_dataset(db, EmbedderModel=EmbedderModel)    
         ensure_vector_index(db)
         
+        logger.info(f"Using embedding model: {EmbedderModel.model_name if hasattr(EmbedderModel, 'model_name') else EMBEDDING_MODEL_NAME}")
+        
         # Run evaluations
-        semantic_results = test_classifier(db, test_dataset, k_values=[5, 10, 20, 50], use_hybrid=False)
-        hybrid_results = test_classifier(db, test_dataset, k_values=[5, 10, 20, 50], use_hybrid=True)
+        semantic_results = test_classifier(db, test_dataset, k_values=[5, 7, 10, 20, 25], use_hybrid=False)
         baseline_results = train_baseline_model(train_dataset, test_dataset)
         distilbert_results = test_distilbert_model(test_dataset)
-        growth_results = simulate_data_growth(db, train_dataset)
         
         # Generate and log final report
-        final_report = generate_final_report(semantic_results, baseline_results, distilbert_results, growth_results, db_stats)
+        final_report = generate_final_report(semantic_results, baseline_results, distilbert_results, db_stats)
         logger.info(final_report)
+        
+        # Save the report to a file
+        report_file = Path("model_comparison_report.txt")
+        report_file.write_text(final_report)
+        logger.info(f"Report saved to {report_file.absolute()}")
         
         logger.info("Evaluation completed successfully")
     except Exception as e:

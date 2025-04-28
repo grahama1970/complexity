@@ -1,25 +1,36 @@
 import torch
 from typing import List, Optional
 from loguru import logger
-from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer, AutoModel
 
-# Constants
-EMBEDDING_MODEL_NAME = "nomic-ai/nomic-embed-text-v1"
+# Import the model name from config.py
+from complexity.beta.utils.config import CONFIG
+
+# Use model name from CONFIG
 DOC_PREFIX = "search_document: "
 
-class ModernBertEmbedder:
+class EmbedderModel:
     """A class for generating text embeddings using a transformer model."""
     
-    def __init__(self, model_name: str = EMBEDDING_MODEL_NAME):
+    def __init__(self, model_name: str = None):
         """
-        Initialize the embedder with a specified model.
+        Initialize the EmbedderModel with a specified model.
         
         Args:
             model_name (str): Name of the transformer model to use.
+                             If None, uses the model from CONFIG.
         """
+        # If no model specified, use from config
+        if model_name is None:
+            model_name = CONFIG["embedding"]["model_name"]
+            
         logger.info(f"Loading embedding model: {model_name}")
         try:
-            self.model = SentenceTransformer(model_name, trust_remote_code=True)
+            # Store the model name as an attribute for reference
+            self.model_name = model_name
+            
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+            self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True)
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
             self.model.to(self.device)
             logger.info(f"Model loaded on device: {self.device}")
@@ -49,16 +60,56 @@ class ModernBertEmbedder:
             
             # Generate embeddings
             logger.debug(f"Embedding {len(texts)} texts on {self.device}")
-            embeddings = self.model.encode(
-                texts,
-                batch_size=32,
-                show_progress_bar=False,
-                convert_to_numpy=True,
-                device=self.device
-            )
             
-            # Convert to list of lists for compatibility
-            embeddings_list = embeddings.tolist()
+            # For BGE models, use specific handling
+            if "bge" in self.model_name.lower():
+                # Tokenize inputs for the BGE model
+                inputs = self.tokenizer(
+                    texts,
+                    padding=True,
+                    truncation=True,
+                    return_tensors="pt",
+                    max_length=512
+                )
+                
+                # Move inputs to device
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                
+                with torch.no_grad():
+                    # Get model outputs
+                    outputs = self.model(**inputs)
+                    
+                    # For BGE models, use the CLS token embedding (first token)
+                    embeddings = outputs.last_hidden_state[:, 0]
+                    
+                    # Normalize embeddings to unit length (important for BGE models)
+                    embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+                    
+                    # Convert to list of lists for compatibility
+                    embeddings_list = embeddings.cpu().tolist()
+            else:
+                # Default embedding logic for other models
+                inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                
+                with torch.no_grad():
+                    outputs = self.model(**inputs)
+                    
+                    # Use mean pooling for other models
+                    attention_mask = inputs["attention_mask"]
+                    token_embeddings = outputs.last_hidden_state
+                    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+                    
+                    # Sum token embeddings and divide by attention mask
+                    sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+                    sum_mask = input_mask_expanded.sum(1)
+                    sum_mask = torch.clamp(sum_mask, min=1e-9)
+                    embeddings = sum_embeddings / sum_mask
+                    
+                    # Normalize
+                    embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+                    embeddings_list = embeddings.cpu().tolist()
+            
             logger.debug(f"Generated {len(embeddings_list)} embeddings")
             return embeddings_list
         
@@ -79,21 +130,3 @@ class ModernBertEmbedder:
         """
         embeddings = self.embed_batch([text], prefix=prefix)
         return embeddings[0] if embeddings else []
-
-if __name__ == "__main__":
-    logger.remove()
-    logger.add(sys.stderr, level="DEBUG")
-    try:
-        # Test the embedder
-        embedder = ModernBertEmbedder()
-        test_texts = [
-            "What is the capital of France?",
-            "How does quantum computing work?"
-        ]
-        embeddings = embedder.embed_batch(test_texts, prefix=DOC_PREFIX)
-        logger.info(f"Embedded {len(test_texts)} texts. First embedding length: {len(embeddings[0])}")
-        single_embedding = embedder.embed_single(test_texts[0], prefix=DOC_PREFIX)
-        logger.info(f"Single embedding length: {len(single_embedding)}")
-    except Exception as e:
-        logger.exception(f"Test failed: {e}")
-        sys.exit(1)

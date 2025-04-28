@@ -29,7 +29,7 @@
 
 4.  [ ] **Refactor `rag_classifer.py` (`server/src/complexity/rag/rag_classifer.py`):**
     *   Update configuration loading to use environment variables or a central config mechanism, matching the details used in `arango_setup.py` (`memory_bank`, `complexity`, `complexity_view`).
-    *   Modify `ModernBertEmbedder` or its usage:
+    *   Modify `EmbedderModel` or its usage:
         *   Instantiate it using the correct model name (`nomic-ai/modernbert-embed-base`).
         *   Ensure its `embed_text` and `embed_batch` methods correctly apply the `search_document:` and `search_query:` prefixes.
     *   Remove the calls to `store_docs_in_arango` and `create_arangosearch_view` from `rag/database/arango_utils.py`. Assume `arango_setup.py` is run separately to prepare the DB.
@@ -70,7 +70,7 @@ graph TD
         direction TB
         I1[Load Config (memory_bank, complexity)] --> I2(Connect to DB: memory_bank);
         I3[Load Dataset (HF)] --> I4(Filter Dataset);
-        I5[Init ModernBertEmbedder] --> I6{Embed Dataset (doc: prefix)};
+        I5[Init EmbedderModel] --> I6{Embed Dataset (doc: prefix)};
         I4 --> I6;
         I6 -- Embedded Docs --> I7(Store Docs in complexity);
         I2 --> I7;

@@ -28,7 +28,7 @@ def main():
     """
     Main pipeline steps:
       1. Load & filter dataset (no train/val/test splitting).
-      2. Initialize a single in-memory ModernBertEmbedder.
+      2. Initialize a single in-memory EmbedderModel.
       3. Concurrently embed dataset questions with "doc:" prefix.
       4. Store docs in ArangoDB + create ArangoSearch view.
       5. Classify new user questions with "query:" prefix (no repeated model loads).
@@ -69,11 +69,11 @@ def main():
         # 1) Load & filter the dataset
         dataset = load_and_filter_dataset(config)
 
-        # 2) Initialize the in-memory ModernBertEmbedder (loaded once!)
-        embedder = ModernBertEmbedder(config["embedding_model_name"])
+        # 2) Initialize the in-memory EmbedderModel (loaded once!)
+        EmbedderModel = EmbedderModel(config["embedding_model_name"])
 
         # 3) Embed dataset concurrently (using doc: prefix), store label=0/1
-        docs = embed_dataset_concurrent(dataset, embedder, config)
+        docs = embed_dataset_concurrent(dataset, EmbedderModel, config)
 
         # 4) Store docs in ArangoDB + create an ArangoSearch view
         db = connect_arango_db(config)
@@ -93,7 +93,7 @@ def main():
         results_table = [["Question", "Classification", "Time (ms)"]]
         for question in questions:
             start_time = time.perf_counter()
-            classification = classify_question(question, db, embedder, config)
+            classification = classify_question(question, db, EmbedderModel, config)
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             results_table.append([question, classification, f"{elapsed_ms:.2f}"])
 
@@ -104,17 +104,17 @@ def main():
 
 
 ##############################################################################
-# 2) MODERNBERT EMBEDDER (LOAD ONCE)
+# 2) MODERNBERT EmbedderModel (LOAD ONCE)
 ##############################################################################
 
-class ModernBertEmbedder:
+class EmbedderModel:
     """
     A simple class that loads the ModernBert model once. 
     Provides methods for embedding single texts or batches, 
     so we don't reload the model for each call.
     """
     def __init__(self, model_name: str):
-        logger.info(f"Initializing ModernBertEmbedder with model: {model_name}")
+        logger.info(f"Initializing EmbedderModel with model: {model_name}")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name)
         self.model.eval()
@@ -207,7 +207,7 @@ def load_and_filter_dataset(config: Dict[str, Any]):
 # 4) CONCURRENT EMBEDDING FOR DATASET
 ##############################################################################
 
-def embed_dataset_concurrent(dataset: List[Dict[str, Any]], embedder: ModernBertEmbedder, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def embed_dataset_concurrent(dataset: List[Dict[str, Any]], EmbedderModel: EmbedderModel, config: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Embeds each dataset question with "doc:" prefix, using a ThreadPoolExecutor 
     + TQDM. Batches are processed in parallel. 
@@ -230,7 +230,7 @@ def embed_dataset_concurrent(dataset: List[Dict[str, Any]], embedder: ModernBert
         end_idx = min(start_idx + batch_size, total_len)
         chunk = dataset[start_idx:end_idx]
         texts = [f"{doc_prefix}{item['question']}" for item in chunk]
-        emb_batch = embedder.embed_batch(texts)
+        emb_batch = EmbedderModel.embed_batch(texts)
 
         chunk_out = []
         for i, emb in enumerate(emb_batch):
@@ -350,14 +350,14 @@ def create_arangosearch_view(db, config: Dict[str, Any]):
 # 7) CLASSIFICATION VIA RETRIEVAL
 ##############################################################################
 
-def classify_question(question_text: str, db, embedder: ModernBertEmbedder, config: Dict[str, Any]) -> str:
+def classify_question(question_text: str, db, EmbedderModel: EmbedderModel, config: Dict[str, Any]) -> str:
     """
     Classify the question as 'Simple' or 'Complex' by:
       1) Embedding question with "query: "
       2) Retrieving top neighbors (BM25 + embedding)
       3) Majority vote on label => return "Simple" or "Complex"
     """
-    top_docs = retrieve_top_docs(question_text, db, embedder, config)
+    top_docs = retrieve_top_docs(question_text, db, EmbedderModel, config)
     if not top_docs:
         return "Unknown"
 
@@ -374,7 +374,7 @@ def classify_question(question_text: str, db, embedder: ModernBertEmbedder, conf
         return "Complex"
 
 
-def retrieve_top_docs(question_text: str, db, embedder: ModernBertEmbedder, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def retrieve_top_docs(question_text: str, db, EmbedderModel: EmbedderModel, config: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Run an AQL query merging BM25 + COSINE_SIMILARITY from embedding.
     """
@@ -383,7 +383,7 @@ def retrieve_top_docs(question_text: str, db, embedder: ModernBertEmbedder, conf
     query_prefix = config["query_prefix"]
 
     # 1) Embed the question once
-    query_emb = embedder.embed_text(f"{query_prefix}{question_text}")
+    query_emb = EmbedderModel.embed_text(f"{query_prefix}{question_text}")
 
     # 2) AQL
     aql = f"""

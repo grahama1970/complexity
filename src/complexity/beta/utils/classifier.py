@@ -1,22 +1,22 @@
 from loguru import logger
 import numpy as np
 from complexity.beta.utils.config import CONFIG
-from complexity.rag.rag_classifier import ModernBertEmbedder, DOC_PREFIX
+from complexity.beta.rag.rag_classifier import EmbedderModel, DOC_PREFIX
 from complexity.beta.utils.arango_setup import ensure_vector_index
 
-def get_embedder():
-    """Return the ModernBertEmbedder instance."""
+def get_EmbedderModel():
+    """Return the EmbedderModel instance."""
     try:
-        return ModernBertEmbedder(model_name=CONFIG["embedding"]["model_name"],)
+        return EmbedderModel(model_name=CONFIG["embedding"]["model_name"],)
     except Exception as e:
-        logger.error(f"Failed to initialize embedder: {e}")
+        logger.error(f"Failed to initialize EmbedderModel: {e}")
         raise
 
 def classify_complexity(db, question: str, k: int):
     """Classify a question using weighted majority voting based on k-NN search."""
     try:
-        embedder = get_embedder()
-        query_embedding = embedder.embed_batch([question], prefix=DOC_PREFIX)[0]
+        EmbedderModel = get_EmbedderModel()
+        query_embedding = EmbedderModel.embed_batch([question], prefix=DOC_PREFIX)[0]
         
         # Hallucinated
         # AQL query to retrieve k nearest neighbors with similarity scores and embeddings

@@ -19,11 +19,11 @@ from arango.exceptions import (
 )
 from dotenv import load_dotenv
 
-# Import embedder
+# Import EmbedderModel
 try:
-    from complexity.rag.rag_classifier import ModernBertEmbedder, EMBEDDING_MODEL_NAME, DOC_PREFIX
+    from complexity.rag.rag_classifer import EmbedderModel, EMBEDDING_MODEL_NAME, DOC_PREFIX
 except ImportError:
-    logger.error("Could not import ModernBertEmbedder. Ensure PYTHONPATH includes 'src'.")
+    logger.error("Could not import EmbedderModel. Ensure PYTHONPATH includes 'src'.")
     sys.exit(1)
 
 # Load environment variables
@@ -65,16 +65,16 @@ if not all(CONFIG["arango"].values()):
     logger.error(f"Missing environment variables: {', '.join(missing)}")
     sys.exit(1)
 
-# Cached embedder
-_embedder_instance = None
+# Cached EmbedderModel
+_EmbedderModel_instance = None
 
-def get_embedder():
-    """Return singleton ModernBertEmbedder."""
-    global _embedder_instance
-    if _embedder_instance is None:
-        logger.info(f"Initializing ModernBertEmbedder: {EMBEDDING_MODEL_NAME}")
-        _embedder_instance = ModernBertEmbedder(EMBEDDING_MODEL_NAME)
-    return _embedder_instance
+def get_EmbedderModel():
+    """Return singleton EmbedderModel."""
+    global _EmbedderModel_instance
+    if _EmbedderModel_instance is None:
+        logger.info(f"Initializing EmbedderModel: {EMBEDDING_MODEL_NAME}")
+        _EmbedderModel_instance = EmbedderModel(EMBEDDING_MODEL_NAME)
+    return _EmbedderModel_instance
 
 def connect_arango():
     """Connect to ArangoDB."""
@@ -183,7 +183,7 @@ def load_and_index_dataset(db: StandardDatabase) -> None:
         emb_pbar = tqdm(total=len(texts), desc="Embedding docs")
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
-            batch_embs = get_embedder().embed_batch(batch, prefix=DOC_PREFIX)
+            batch_embs = get_EmbedderModel().embed_batch(batch, prefix=DOC_PREFIX)
             embeddings.extend(batch_embs)
             emb_pbar.update(len(batch_embs))
         emb_pbar.close()
@@ -273,7 +273,7 @@ def classify_complexity(db: StandardDatabase, question: str, k: int = None) -> T
     """Classify question complexity using semantic search."""
     k = k or CONFIG["classification"]["default_k"]
     try:
-        emb = get_embedder().embed_batch([question])[0]
+        emb = get_EmbedderModel().embed_batch([question])[0]
         """NOTES:
          - FILTER must come AFTER SORT in AQL
          - APPROX_NEAR_COSINE MUST be used on the Collection, NOT the View

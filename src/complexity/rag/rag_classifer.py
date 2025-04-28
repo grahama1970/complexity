@@ -96,7 +96,7 @@ TOP_K_NEIGHBORS = int(os.getenv("TOP_K_NEIGHBORS", "3")) # Changed default k fro
 def main():
     """
     Main pipeline steps:
-      1. Initialize the in-memory ModernBertEmbedder.
+      1. Initialize the in-memory EmbedderModel.
       2. Initialize connection to the existing ArangoDB.
       3. Verify required ArangoDB collection and view exist.
       4. Classify new user questions with QUERY_PREFIX using retrieval.
@@ -104,8 +104,8 @@ def main():
     """
     logger.info(f"Attempting to connect to ArangoDB: host='{ARANGO_HOST}', db='{ARANGO_DB_NAME}', user='{ARANGO_USER}'")
     try:
-        # 1) Initialize the in-memory ModernBertEmbedder (loaded once!)
-        embedder = ModernBertEmbedder(EMBEDDING_MODEL_NAME)
+        # 1) Initialize the in-memory EmbedderModel (loaded once!)
+        EmbedderModel = EmbedderModel(EMBEDDING_MODEL_NAME)
 
         # 2) Initialize connection to ArangoDB
         # Construct config dict for initialize_database using loaded env vars
@@ -183,7 +183,7 @@ def main():
         logger.info(f"Classifying {len(questions_to_classify)} questions...")
         for question in tqdm(questions_to_classify, desc="Classifying Questions"):
             start_time = time.perf_counter()
-            classification = classify_question(question, db, embedder, classification_config)
+            classification = classify_question(question, db, EmbedderModel, classification_config)
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             expected_classification = EXPECTED_RESULTS.get(question, "N/A")
             results_table.append([question, classification, expected_classification, f"{elapsed_ms:.2f}"])
@@ -252,10 +252,10 @@ def main():
 
 
 ##############################################################################
-# 2) MODERNBERT EMBEDDER (LOAD ONCE)
+# 2) MODERNBERT EmbedderModel (LOAD ONCE)
 ##############################################################################
 
-class ModernBertEmbedder:
+class EmbedderModel:
     """
     A simple class that loads the ModernBert model once.
     Provides methods for embedding single texts or batches,
@@ -263,7 +263,7 @@ class ModernBertEmbedder:
     Uses the specified model name (e.g., "nomic-ai/modernbert-embed-base").
     """
     def __init__(self, model_name: str):
-        logger.info(f"Initializing ModernBertEmbedder with model: {model_name}")
+        logger.info(f"Initializing EmbedderModel with model: {model_name}")
         try:
             # Ensure correct model name is used and trust remote code
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -350,7 +350,7 @@ class ModernBertEmbedder:
 def classify_question(
     question_text: str,
     db: StandardDatabase, # Type hint for Arango DB connection
-    embedder: ModernBertEmbedder,
+    EmbedderModel: EmbedderModel,
     config: Dict[str, Any]
 ) -> str:
     """
@@ -362,7 +362,7 @@ def classify_question(
     """
     try:
         # Retrieve top documents using the provided config
-        top_docs = retrieve_top_docs(question_text, db, embedder, config)
+        top_docs = retrieve_top_docs(question_text, db, EmbedderModel, config)
         if not top_docs:
             logger.warning(f"No similar documents found for question: '{question_text}'")
             return "Unknown" # Return Unknown if no docs are retrieved
@@ -390,7 +390,7 @@ def classify_question(
 def retrieve_top_docs(
     question_text: str,
     db: StandardDatabase, # Type hint
-    embedder: ModernBertEmbedder,
+    EmbedderModel: EmbedderModel,
     config: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     """
@@ -406,7 +406,7 @@ def retrieve_top_docs(
 
     try:
         # 1) Embed the question with the query prefix
-        query_emb = embedder.embed_text(question_text, prefix=query_prefix)
+        query_emb = EmbedderModel.embed_text(question_text, prefix=query_prefix)
 
         # 2) Load AQL query template from file
         aql_template = load_text_file(aql_file_path)
