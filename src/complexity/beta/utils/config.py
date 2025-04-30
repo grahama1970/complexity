@@ -1,4 +1,29 @@
+# src/complexity/beta/utils/config.py
+"""
+Module Description:
+Defines the central configuration dictionary (CONFIG) for the complexity project.
+Loads settings from environment variables using python-dotenv for database connections,
+dataset details, embedding models, search parameters, classification thresholds,
+graph settings, and LLM configurations. Includes a validation function to ensure
+required environment variables are set.
+
+Links:
+- python-dotenv: https://github.com/theskumar/python-dotenv
+- os module: https://docs.python.org/3/library/os.html
+
+Sample Input/Output:
+
+- Accessing config values:
+  from complexity.beta.utils.config import CONFIG
+  db_host = CONFIG["arango"]["host"]
+  model_name = CONFIG["embedding"]["model_name"]
+
+- Running validation:
+  python -m complexity.beta.utils.config
+  (Prints validation status and exits with 0 or 1)
+"""
 import os
+import sys # Import sys for exit codes
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -54,13 +79,46 @@ CONFIG = {
 }
 
 # Validate environment
-def validate_config():
-    """Validate that required environment variables are set."""
+def validate_config() -> bool:
+    """
+    Validate that required environment variables are set.
+    Returns True if valid, False otherwise. Logs errors.
+    """
+    validation_passed = True
+    missing = []
+
+    # Check ArangoDB config
     if not all(CONFIG["arango"].values()):
-        missing = [k for k, v in CONFIG["arango"].items() if not v]
-        logger.error(f"Missing environment variables: {', '.join(missing)}")
-        raise ValueError(f"Missing environment variables: {', '.join(missing)}")
-    logger.info("Configuration validated successfully")
+        missing = [f"ARANGO_{k.upper()}" for k, v in CONFIG["arango"].items() if not v]
+        logger.error(f"Missing ArangoDB environment variables: {', '.join(missing)}")
+        validation_passed = False
+
+    # Add checks for other critical env vars if necessary, e.g., LLM API keys
+    # Example: Check if LLM API key is set if type is openai
+    if CONFIG["llm"]["api_type"] == "openai" and not CONFIG["llm"]["api_key_env"]:
+         missing_llm_key = "OPENAI_API_KEY" # Assuming this is the env var name
+         logger.error(f"Missing LLM environment variable: {missing_llm_key} (required for api_type='openai')")
+         missing.append(missing_llm_key)
+         validation_passed = False
+
+    if validation_passed:
+        logger.info("Configuration environment variables validated successfully.")
+    else:
+        logger.error(f"Validation failed. Missing variables: {', '.join(missing)}")
+
+    return validation_passed
+
 
 if __name__ == "__main__":
-    validate_config()
+    logger.remove() # Remove default handler
+    logger.add(sys.stderr, level="INFO") # Add back INFO level for __main__
+
+    logger.info("Running configuration validation...")
+    is_valid = validate_config()
+
+    if is_valid:
+        print("✅ VALIDATION COMPLETE - Required environment variables are set.")
+        sys.exit(0)
+    else:
+        print("❌ VALIDATION FAILED - Missing required environment variables. See logs for details.")
+        sys.exit(1)

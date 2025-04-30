@@ -1,4 +1,40 @@
 # src/complexity/beta/utils/arango_setup.py
+"""
+Module Description:
+Provides utility functions for setting up and interacting with ArangoDB for the complexity project.
+Includes functions for connecting to the database, ensuring databases, collections, views,
+and graphs exist, loading and indexing datasets with embeddings, ensuring vector indexes,
+and classifying question complexity using semantic search.
+
+Links:
+- python-arango Driver: https://python-arango.readthedocs.io/en/latest/
+- ArangoDB Manual: https://www.arangodb.com/docs/stable/
+- Hugging Face Datasets: https://huggingface.co/docs/datasets/
+- python-dotenv: https://github.com/theskumar/python-dotenv
+
+Sample Input/Output:
+
+- connect_arango():
+  - Input: None (uses environment variables/config)
+  - Output: ArangoClient instance
+
+- ensure_database(client: ArangoClient):
+  - Input: ArangoClient instance
+  - Output: StandardDatabase instance for the target DB
+
+- load_and_index_dataset(db: StandardDatabase, EmbedderModel_instance: EmbedderModel):
+  - Input: StandardDatabase instance, EmbedderModel instance
+  - Output: None (loads data into DB)
+
+- ensure_vector_index(db: StandardDatabase):
+  - Input: StandardDatabase instance
+  - Output: None (ensures index exists)
+
+- classify_complexity(db: StandardDatabase, question: str, k: int = ..., return_neighbors: bool = ...):
+  - Input: DB instance, question string, optional k, optional return_neighbors flag
+  - Output: Tuple (label: int, confidence: float, auto_accept: bool, Optional[List[Dict]])
+    Example: (1, 0.85, True, [...]) or (0, 0.6, False)
+"""
 import sys
 import os
 import requests
@@ -39,7 +75,7 @@ if not all(CONFIG["arango"].values()):
 # Cached EmbedderModel
 _EmbedderModel_instance = None
 
-def get_EmbedderModel(force_new=False):
+def get_EmbedderModel(force_new: bool = False) -> EmbedderModel:
     """Return singleton EmbedderModel or create a new one if requested."""
     global _EmbedderModel_instance
     if _EmbedderModel_instance is None or force_new:
@@ -47,7 +83,7 @@ def get_EmbedderModel(force_new=False):
         _EmbedderModel_instance = EmbedderModel(CONFIG["embedding"]["model_name"])
     return _EmbedderModel_instance
 
-def connect_arango():
+def connect_arango() -> ArangoClient:
     """Connect to ArangoDB."""
     logger.info(f"Connecting to ArangoDB at {CONFIG['arango']['host']}")
     try:
@@ -59,7 +95,7 @@ def connect_arango():
         logger.exception(f"Connection failed: {e}")
         sys.exit(1)
 
-def ensure_database(client):
+def ensure_database(client: ArangoClient) -> StandardDatabase:
     """Ensure database exists."""
     try:
         sys_db = client.db("_system", username=CONFIG["arango"]["user"], password=CONFIG["arango"]["password"])
@@ -72,7 +108,7 @@ def ensure_database(client):
         logger.exception(f"Database setup failed: {e}")
         sys.exit(1)
 
-def ensure_collection(db):
+def ensure_collection(db: StandardDatabase) -> None:
     """Ensure collection exists."""
     try:
         name = CONFIG["search"]["collection_name"]
@@ -84,7 +120,7 @@ def ensure_collection(db):
         logger.exception(f"Collection creation failed: {e}")
         sys.exit(1)
 
-def ensure_arangosearch_view(db):
+def ensure_arangosearch_view(db: StandardDatabase) -> None:
     """Ensure ArangoSearch view."""
     try:
         view_name = CONFIG["search"]["view_name"]
@@ -99,15 +135,32 @@ def ensure_arangosearch_view(db):
             }
         }
         props = {"links": links}
-        if analyzer not in {a["name"] for a in db.analyzers()}:
+        # Check if analyzer exists by iterating through the list provided by the db object
+        analyzer_exists = False
+        for a in db.analyzers():
+             if a["name"] == analyzer:
+                 analyzer_exists = True
+                 break
+        if not analyzer_exists:
             logger.info(f"Creating analyzer '{analyzer}'")
+            # Corrected arguments for create_analyzer
             db.create_analyzer(
-                analyzer,
-                {"type": "text", "properties": {"locale": "en", "stemming": True, "case": "lower"}},
+                name=analyzer,
+                analyzer_type="text",
+                properties={"locale": "en", "stemming": True, "case": "lower"},
             )
-        if view_name in {v["name"] for v in db.views()}:
-            current = db.view(view_name)
-            if current.get("links", {}) != links:
+
+        # Check if view exists by iterating
+        view_exists = False
+        for v in db.views():
+            if v["name"] == view_name:
+                view_exists = True
+                break
+
+        if view_exists:
+            current_view = db.view(view_name)
+            current_props = current_view.properties() # Get properties first
+            if current_props.get("links", {}) != links:
                 logger.info(f"Recreating view '{view_name}'")
                 db.delete_view(view_name)
                 db.create_view(name=view_name, view_type="arangosearch", properties=props)
@@ -121,7 +174,7 @@ def ensure_arangosearch_view(db):
         logger.exception(f"View setup failed: {e}")
         sys.exit(1)
 
-def ensure_edge_collections(db):
+def ensure_edge_collections(db: StandardDatabase) -> None:
     """Ensure edge collections for relationships exist."""
     try:
         # Get list of all collections in the database
@@ -139,7 +192,7 @@ def ensure_edge_collections(db):
         logger.exception(f"Edge collection setup failed: {e}")
         sys.exit(1)
 
-def ensure_graph(db):
+def ensure_graph(db: StandardDatabase) -> None:
     """Ensure named graph exists for traversals."""
     try:
         graph_name = "complexity_graph"
@@ -166,7 +219,8 @@ def ensure_graph(db):
         logger.exception(f"Graph setup failed: {e}")
         sys.exit(1)
 
-def load_and_index_dataset(db: StandardDatabase, EmbedderModel=None) -> None:
+# Renamed parameter for clarity and added type hint
+def load_and_index_dataset(db: StandardDatabase, embedder_instance: Optional[EmbedderModel] = None) -> None:
     """Load dataset, embed texts with progress bars, and insert into collection."""
     logger.info("Loading dataset...")
     try:
@@ -178,7 +232,7 @@ def load_and_index_dataset(db: StandardDatabase, EmbedderModel=None) -> None:
             sys.exit(1)
         
         # Get the EmbedderModel - either use the provided one or get/create the default one
-        emb = EmbedderModel if EmbedderModel else get_EmbedderModel()
+        emb = embedder_instance if embedder_instance else get_EmbedderModel()
         
         # Log which embedding model is being used - safely check for attribute
         embedding_model_name = getattr(emb, 'model_name', CONFIG['embedding']['model_name'])
@@ -242,6 +296,7 @@ def ensure_vector_index(db:StandardDatabase):
         col = db.collection(CONFIG["search"]["collection_name"])
         doc_count = col.count()
         
+        assert isinstance(doc_count, int), f"Expected int for doc_count, got {type(doc_count)}"
         if doc_count < 3:
             logger.error(f"Collection has {doc_count} documents; need at least 3 to create vector index")
             sys.exit(1)
@@ -316,7 +371,8 @@ def ensure_vector_index(db:StandardDatabase):
         logger.exception(f"Vector index creation failed: {e}")
         sys.exit(1)
 
-def classify_complexity(db: StandardDatabase, question: str, k: int = None, return_neighbors: bool = False) -> Tuple[int, float, bool, Optional[List[Dict]]]:
+# Added type argument Any to Dict, adjusted default k type hint
+def classify_complexity(db: StandardDatabase, question: str, k: Optional[int] = None, return_neighbors: bool = False) -> Tuple[int, float, bool, Optional[List[Dict[str, Any]]]]:
     """
     Classify question complexity using semantic search.
     
@@ -365,7 +421,8 @@ def classify_complexity(db: StandardDatabase, question: str, k: int = None, retu
         results = list(cursor)
         if not results:
             logger.warning("No neighbors found")
-            return (0, 0.0, False, []) if return_neighbors else (0, 0.0, False)
+            # Return 4-tuple with None when neighbors are not requested
+            return (0, 0.0, False, []) if return_neighbors else (0, 0.0, False, None)
         
         votes = {0: 0.0, 1: 0.0}
         total = 0.0
@@ -380,7 +437,8 @@ def classify_complexity(db: StandardDatabase, question: str, k: int = None, retu
                 total += weight
                 
         if total <= 0:
-            return (0, 0.0, False, []) if return_neighbors else (0, 0.0, False)
+            # Return 4-tuple with None when neighbors are not requested
+            return (0, 0.0, False, []) if return_neighbors else (0, 0.0, False, None)
             
         majority = max(votes, key=votes.get)
         confidence = votes[majority] / total
@@ -390,36 +448,164 @@ def classify_complexity(db: StandardDatabase, question: str, k: int = None, retu
         
         if return_neighbors:
             return majority, confidence, auto_accept, results
-        return majority, confidence, auto_accept
+        # Return 4-tuple with None when neighbors are not requested
+        return majority, confidence, auto_accept, None
         
     except Exception as e:
         logger.exception(f"Classification failed: {e}")
-        return (0, 0.0, False, []) if return_neighbors else (0, 0.0, False)
+        # Return 4-tuple with None when neighbors are not requested
+        return (0, 0.0, False, []) if return_neighbors else (0, 0.0, False, None)
 
 if __name__ == "__main__":
     logger.remove()
     logger.add(sys.stderr, level="DEBUG")
+
+    validation_passed = True
+    validation_failures = {}
+
+    # --- Expected Values ---
+    EXPECTED_DB_NAME = CONFIG["arango"]["db_name"]
+    EXPECTED_COLLECTION_NAME = CONFIG["search"]["collection_name"]
+    EXPECTED_VIEW_NAME = CONFIG["search"]["view_name"]
+    EXPECTED_GRAPH_NAME = "complexity_graph"
+    EXPECTED_EDGE_COLLECTIONS = ["prerequisites", "related_topics"]
+    EXPECTED_VECTOR_INDEX_FIELD = CONFIG["embedding"]["field"]
+    EXPECTED_VECTOR_INDEX_DIM = CONFIG["embedding"]["dimensions"]
+    TEST_QUESTION = "What is the capital of France?"
+    # Define a simple expected outcome for the test classification
+    # This might need adjustment based on the actual dataset and model behavior
+    EXPECTED_TEST_LABEL = 0 # Assuming "Simple" for this question
+
     try:
+        logger.info("Starting ArangoDB setup and validation...")
         # Set PyTorch memory config to avoid fragmentation
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-        
+
+        # --- Connect and Ensure DB ---
+        logger.info("Connecting to ArangoDB...")
         client = connect_arango()
+        logger.info("Ensuring database exists...")
         db = ensure_database(client)
+        if db.name != EXPECTED_DB_NAME:
+            validation_passed = False
+            validation_failures["database_name"] = {"expected": EXPECTED_DB_NAME, "actual": db.name}
+            logger.error(f"Database name mismatch: Expected {EXPECTED_DB_NAME}, Got {db.name}")
+
+        # --- Ensure Collection ---
+        logger.info(f"Ensuring collection '{EXPECTED_COLLECTION_NAME}' exists...")
         ensure_collection(db)
+        if not db.has_collection(EXPECTED_COLLECTION_NAME):
+            validation_passed = False
+            validation_failures["collection_missing"] = {"expected": EXPECTED_COLLECTION_NAME, "actual": "Not Found"}
+            logger.error(f"Collection '{EXPECTED_COLLECTION_NAME}' not found after ensure_collection.")
+        else:
+             logger.info(f"Collection '{EXPECTED_COLLECTION_NAME}' verified.")
+
+
+        # --- Ensure View ---
+        logger.info(f"Ensuring ArangoSearch view '{EXPECTED_VIEW_NAME}' exists...")
         ensure_arangosearch_view(db)
-        
-        # Create a new EmbedderModel instance with the configured model
-        EmbedderModel = EmbedderModel(CONFIG["embedding"]["model_name"])
-        
-        # Load and index data with the new EmbedderModel
-        load_and_index_dataset(db, EmbedderModel=EmbedderModel)
+        if not db.has_view(EXPECTED_VIEW_NAME):
+             validation_passed = False
+             validation_failures["view_missing"] = {"expected": EXPECTED_VIEW_NAME, "actual": "Not Found"}
+             logger.error(f"View '{EXPECTED_VIEW_NAME}' not found after ensure_arangosearch_view.")
+        else:
+             logger.info(f"View '{EXPECTED_VIEW_NAME}' verified.")
+
+
+        # --- Ensure Edge Collections ---
+        logger.info("Ensuring edge collections exist...")
+        ensure_edge_collections(db)
+        db_collections = [c['name'] for c in db.collections()]
+        for edge_coll in EXPECTED_EDGE_COLLECTIONS:
+            if edge_coll not in db_collections:
+                validation_passed = False
+                validation_failures[f"edge_collection_{edge_coll}_missing"] = {"expected": edge_coll, "actual": "Not Found"}
+                logger.error(f"Edge collection '{edge_coll}' not found after ensure_edge_collections.")
+            else:
+                logger.info(f"Edge collection '{edge_coll}' verified.")
+
+        # --- Ensure Graph ---
+        logger.info(f"Ensuring graph '{EXPECTED_GRAPH_NAME}' exists...")
+        ensure_graph(db)
+        if not db.has_graph(EXPECTED_GRAPH_NAME):
+             validation_passed = False
+             validation_failures["graph_missing"] = {"expected": EXPECTED_GRAPH_NAME, "actual": "Not Found"}
+             logger.error(f"Graph '{EXPECTED_GRAPH_NAME}' not found after ensure_graph.")
+        else:
+             logger.info(f"Graph '{EXPECTED_GRAPH_NAME}' verified.")
+
+
+        # --- Load Data and Index ---
+        logger.info("Loading and indexing dataset...")
+        embedder_model_instance = get_EmbedderModel() # Use the getter
+        load_and_index_dataset(db, embedder_instance=embedder_model_instance)
+        # Basic validation: check if collection has documents
+        col = db.collection(EXPECTED_COLLECTION_NAME)
+        doc_count = col.count()
+        assert isinstance(doc_count, int) # Re-assert for clarity post Pylance issues
+        if doc_count == 0:
+             validation_passed = False
+             validation_failures["data_loading"] = {"expected": "> 0 documents", "actual": "0 documents"}
+             logger.error("Collection is empty after load_and_index_dataset.")
+        else:
+             logger.info(f"Collection has {doc_count} documents after loading.")
+
+
+        # --- Ensure Vector Index ---
+        logger.info("Ensuring vector index exists...")
         ensure_vector_index(db)
-        
-        # Test classification
-        result = classify_complexity(db, "What is the capital of France?")
-        logger.info(f"Test classification: {result}")
-        
-        logger.info("Setup completed successfully")
+        # Validate index properties
+        indexes = col.indexes()
+        vector_index_found = False
+        for idx in indexes:
+            if idx.get("type") == "vector" and EXPECTED_VECTOR_INDEX_FIELD in idx.get("fields", []):
+                vector_index_found = True
+                params = idx.get("params", {})
+                actual_dim = params.get("dimension")
+                if actual_dim != EXPECTED_VECTOR_INDEX_DIM:
+                    validation_passed = False
+                    validation_failures["vector_index_dimension"] = {"expected": EXPECTED_VECTOR_INDEX_DIM, "actual": actual_dim}
+                    logger.error(f"Vector index dimension mismatch: Expected {EXPECTED_VECTOR_INDEX_DIM}, Got {actual_dim}")
+                else:
+                    logger.info(f"Vector index '{idx.get('name')}' verified with dimension {actual_dim}.")
+                break
+        if not vector_index_found:
+             validation_passed = False
+             validation_failures["vector_index_missing"] = {"expected": f"Index on {EXPECTED_VECTOR_INDEX_FIELD}", "actual": "Not Found"}
+             logger.error("Vector index not found after ensure_vector_index.")
+
+
+        # --- Test Classification ---
+        logger.info(f"Testing classification for: '{TEST_QUESTION}'")
+        # Ensure k is explicitly passed if needed, or rely on default
+        label, confidence, auto_accept, _ = classify_complexity(db, TEST_QUESTION) # Ignore neighbors for this validation
+        logger.info(f"Test classification result: label={label}, confidence={confidence:.2f}, auto_accept={auto_accept}")
+        if label != EXPECTED_TEST_LABEL:
+             validation_passed = False
+             validation_failures["test_classification_label"] = {"expected": EXPECTED_TEST_LABEL, "actual": label}
+             logger.error(f"Test classification label mismatch: Expected {EXPECTED_TEST_LABEL}, Got {label}")
+        else:
+             logger.info("Test classification label matches expected.")
+
+
     except Exception as e:
-        logger.exception(f"Setup failed: {e}")
+        validation_passed = False
+        validation_failures["runtime_error"] = str(e)
+        logger.exception(f"Setup or validation failed with runtime error: {e}")
+
+    # --- Final Reporting ---
+    if validation_passed:
+        print("✅ VALIDATION COMPLETE - All setup and validation steps passed.")
+        logger.success("Standalone execution and validation successful.")
+        sys.exit(0)
+    else:
+        print("❌ VALIDATION FAILED - Issues detected during setup or validation.")
+        print("FAILURE DETAILS:")
+        for field, details in validation_failures.items():
+            if isinstance(details, dict):
+                 print(f"  - {field}: Expected: {details.get('expected', 'N/A')}, Got: {details.get('actual', 'N/A')}")
+            else:
+                 print(f"  - {field}: {details}")
+        logger.error("Standalone execution and validation failed.")
         sys.exit(1)

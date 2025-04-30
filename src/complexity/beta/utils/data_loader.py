@@ -1,17 +1,42 @@
+# src/complexity/beta/utils/data_loader.py
+"""
+Module Description:
+Provides functions for loading the question complexity dataset, filtering invalid entries,
+balancing classes, generating embeddings, and indexing the processed data into ArangoDB.
+Includes a custom loguru sink for integration with tqdm progress bars.
+
+Links:
+- Hugging Face Datasets: https://huggingface.co/docs/datasets/
+- Loguru: https://loguru.readthedocs.io/en/stable/
+- tqdm: https://tqdm.github.io/
+- python-arango Driver: https://python-arango.readthedocs.io/en/latest/
+
+Sample Input/Output:
+
+- load_and_index_dataset(db: StandardDatabase, model_name: str):
+  - Input: ArangoDB StandardDatabase instance, embedding model name string.
+  - Output: None. (Populates the configured ArangoDB collection).
+"""
 from loguru import logger
 import sys
-from datasets import load_dataset
+from typing import Any # Import Any for loguru Record type hint
+from datasets import load_dataset, Dataset # Import Dataset type
 from tqdm.auto import tqdm
-from complexity.beta.utils.config import CONFIG
-from complexity.rag.rag_classifier import EmbedderModel, DOC_PREFIX
-from complexity.utils.file_utils import load_env_file
+from arango.database import StandardDatabase # Import StandardDatabase type hint
 
-def load_and_index_dataset(db, model_name: str):
+from complexity.beta.utils.config import CONFIG
+# Correct import path assuming rag_classifier is in beta.rag
+from complexity.beta.rag.rag_classifier import EmbedderModel, DOC_PREFIX
+# Import necessary setup functions for standalone execution
+from complexity.beta.utils.arango_setup import connect_arango, ensure_database, ensure_collection
+# Removed unused import: from complexity.utils.file_utils import load_env_file
+
+def load_and_index_dataset(db: StandardDatabase, model_name: str) -> None:
     """Load dataset, balance classes, and index into ArangoDB with embeddings."""
     try:
-        # Load environment variables
-        load_env_file()
-        
+        # Environment variables are loaded by config.py or arango_setup.py now
+        # load_env_file() # Removed redundant call
+
         # Load dataset
         logger.info("Loading dataset for indexing")
         dataset = load_dataset(
@@ -19,7 +44,11 @@ def load_and_index_dataset(db, model_name: str):
             split=CONFIG["dataset"]["split"],
             trust_remote_code=True
         )
-        logger.info(f"Original dataset size: {len(dataset)}")
+        # Add type check for dataset length
+        dataset_len = 0
+        if isinstance(dataset, (Dataset, list)): # Check if it's a type with len()
+             dataset_len = len(dataset)
+        logger.info(f"Original dataset size: {dataset_len}")
         
         # Filter invalid entries
         valid_data = []
@@ -98,8 +127,81 @@ def load_and_index_dataset(db, model_name: str):
         logger.exception(f"Failed to load and index dataset: {e}")
         raise
 
-def tqdm_sink(message):
+def tqdm_sink(message: Any) -> None: # Added type hint for loguru Record (approximated with Any)
     """Custom loguru sink to discard INFO and DEBUG logs during tqdm."""
     if message.record["level"].name in ["INFO", "DEBUG"]:
         return
     tqdm.write(str(message), end="")
+
+
+if __name__ == "__main__":
+    logger.remove()
+    logger.add(sys.stderr, level="DEBUG")
+
+    validation_passed = True
+    validation_failures = {}
+
+    # --- Expected Values ---
+    EXPECTED_COLLECTION_NAME = CONFIG["search"]["collection_name"]
+    MODEL_NAME_FOR_TEST = CONFIG["embedding"]["model_name"]
+
+    db_instance: Optional[StandardDatabase] = None
+
+    try:
+        logger.info("Connecting to ArangoDB for validation...")
+        client = connect_arango()
+        db_instance = ensure_database(client)
+        logger.info(f"Connected to database: {db_instance.name}")
+
+        # Ensure collection exists before loading
+        ensure_collection(db_instance)
+        if not db_instance.has_collection(EXPECTED_COLLECTION_NAME):
+             logger.error(f"Prerequisite failed: Collection '{EXPECTED_COLLECTION_NAME}' does not exist.")
+             raise RuntimeError(f"Collection '{EXPECTED_COLLECTION_NAME}' missing.")
+
+        # --- Load and Index Data ---
+        logger.info(f"Running load_and_index_dataset with model: {MODEL_NAME_FOR_TEST}")
+        load_and_index_dataset(db_instance, MODEL_NAME_FOR_TEST)
+
+        # --- Validation ---
+        logger.info(f"Validating collection '{EXPECTED_COLLECTION_NAME}' content...")
+        col = db_instance.collection(EXPECTED_COLLECTION_NAME)
+        doc_count = col.count()
+        assert isinstance(doc_count, int) # Assert type for safety
+
+        if doc_count == 0:
+            validation_passed = False
+            validation_failures["document_count"] = {"expected": "> 0", "actual": 0}
+            logger.error("Validation Error: Collection is empty after loading.")
+        else:
+            logger.info(f"Validation Info: Collection contains {doc_count} documents.")
+            # Optional: Add check for embedding field presence in a sample doc
+            sample_doc = col.random()
+            if sample_doc and CONFIG["embedding"]["field"] not in sample_doc:
+                 validation_passed = False
+                 validation_failures["embedding_field"] = {"expected": f"Field '{CONFIG['embedding']['field']}'", "actual": "Not found in sample doc"}
+                 logger.error(f"Validation Error: Embedding field '{CONFIG['embedding']['field']}' missing in sample document.")
+            elif sample_doc:
+                 logger.info(f"Validation Info: Embedding field '{CONFIG['embedding']['field']}' found in sample document.")
+
+
+    except Exception as e:
+        validation_passed = False
+        validation_failures["runtime_error"] = str(e)
+        logger.exception(f"Validation failed with runtime error: {e}")
+
+    # --- Final Reporting ---
+    if validation_passed:
+        print("✅ VALIDATION COMPLETE - load_and_index_dataset executed and collection contains data.")
+        logger.success("Standalone execution and validation successful.")
+        sys.exit(0)
+    else:
+        print("❌ VALIDATION FAILED - Issues detected during data loading or validation.")
+        print("FAILURE DETAILS:")
+        for field, details in validation_failures.items():
+            if isinstance(details, dict):
+                 print(f"  - {field}: Expected: {details.get('expected', 'N/A')}, Got: {details.get('actual', 'N/A')}")
+            else:
+                 print(f"  - {field}: {details}")
+        logger.error("Standalone execution and validation failed.")
+        sys.exit(1)
