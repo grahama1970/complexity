@@ -21,7 +21,7 @@ from arango.exceptions import (
     IndexCreateError,
     CollectionDeleteError,
 )
-from pdf_extractor.arangodb.config import (
+from complexity.arangodb.config import (
     ARANGO_HOST,
     ARANGO_USER,
     ARANGO_PASSWORD,
@@ -36,14 +36,14 @@ from pdf_extractor.arangodb.config import (
     TAG_ANALYZER,
     VECTOR_INDEX_NLISTS,
 )
-from pdf_extractor.arangodb.message_history_config import ( # Add correct import block
+from complexity.arangodb._archive.message_history_config import ( # Add correct import block
     MESSAGE_EDGE_COLLECTION_NAME,
     MESSAGE_GRAPH_NAME
 )
 
 # Import embedding utils – handle potential import errors during setup
 try:
-    from pdf_extractor.arangodb.embedding_utils import get_embedding
+    from complexity.arangodb.embedding_utils import get_embedding
 except ImportError as e:
     logger.warning(f"Could not import embedding utilities: {e}. Embedding generation will fail.")
     get_embedding = None

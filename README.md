@@ -91,7 +91,27 @@ This approach traditionally yields **higher accuracy** for stable sets of classe
    - Run evaluation comparing semantic search performance at different k-values.
    - Generate a detailed report comparing RAG and fine-tuned model approaches.
 
-### B) Fine-Tuned DistilBERT
+### C) Standalone Module Validation (New)
+
+Most core modules now include a self-validation check within an `if __name__ == "__main__":` block. This allows you to quickly verify the basic functionality of a module independently.
+
+1. **📦 Ensure requirements are installed**: `uv sync`
+2. **▶️ Run validation for a specific module**:
+   Use the `uv run python -m <module_path>` pattern. Replace `<module_path>` with the Python path to the module (e.g., `src.complexity.beta.utils.arango_setup`).
+
+   ```bash
+   # Example: Validate the ArangoDB setup module
+   uv run python -m src.complexity.beta.utils.arango_setup
+
+   # Example: Validate the RAG classifier module
+   uv run python -m src.complexity.beta.rag.rag_classifier
+
+   # Example: Validate the relationship builder module
+   uv run python -m src.complexity.beta.utils.relationship_builder
+   ```
+   The script will print `✅ VALIDATION COMPLETE` and exit with code 0 on success, or `❌ VALIDATION FAILED` with details and exit code 1 on failure. Some validations require ArangoDB to be running and potentially populated with data.
+
+### D) Fine-Tuned DistilBERT
 
 1. **📦 Install requirements** (including `transformers`, `datasets`).
 2. **▶️ Run**:

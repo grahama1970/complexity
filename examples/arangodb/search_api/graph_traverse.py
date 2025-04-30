@@ -4,10 +4,10 @@ import json
 from typing import Dict, Any, List, Optional, Union, Tuple
 from loguru import logger
 from arango.database import StandardDatabase
-from pdf_extractor.arangodb.config import (
+from complexity.arangodb.config import (
     COLLECTION_NAME, GRAPH_NAME
 )
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
 
 def graph_traverse(
     db: StandardDatabase,

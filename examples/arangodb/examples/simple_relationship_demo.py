@@ -3,10 +3,10 @@ import sys
 import uuid
 from loguru import logger
 from arango.database import StandardDatabase
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database, ensure_edge_collection, ensure_graph
-from pdf_extractor.arangodb.config import COLLECTION_NAME, RELATIONSHIP_TYPE_PREREQUISITE
-from pdf_extractor.arangodb.relationship_api import add_relationship, get_relationships
-from pdf_extractor.arangodb.agent_decision import create_strategic_relationship
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database, ensure_edge_collection, ensure_graph
+from complexity.arangodb.config import COLLECTION_NAME, RELATIONSHIP_TYPE_PREREQUISITE
+from complexity.arangodb.relationship_api import add_relationship, get_relationships
+from complexity.arangodb.agent_decision import create_strategic_relationship
 
 # Set up logging
 logger.remove()

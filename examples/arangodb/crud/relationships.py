@@ -9,12 +9,12 @@ from loguru import logger
 from arango.database import StandardDatabase
 
 # Import necessary functions using absolute paths
-from pdf_extractor.arangodb.crud.generic import create_document, query_documents, delete_document
-from pdf_extractor.arangodb.message_history_config import (
+from complexity.arangodb.crud.generic import create_document, query_documents, delete_document
+from complexity.arangodb._archive.message_history_config import (
     MESSAGE_COLLECTION_NAME,
     RELATIONSHIP_TYPE_REFERS_TO
 )
-from pdf_extractor.arangodb.config import (
+from complexity.arangodb.config import (
     COLLECTION_NAME as DOC_COLLECTION_NAME, # Import COLLECTION_NAME and alias
     EDGE_COLLECTION_NAME as DOC_EDGE_COLLECTION_NAME, # Use the main edge collection
     GRAPH_NAME as DOC_GRAPH_NAME # Import the main graph name

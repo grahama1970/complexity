@@ -8,14 +8,14 @@ from arango.database import StandardDatabase
 from arango.exceptions import AQLQueryExecuteError, ArangoServerError
 
 # Import config variables
-from pdf_extractor.arangodb.config import (
+from complexity.arangodb.config import (
     COLLECTION_NAME,
     SEARCH_FIELDS,
     ALL_DATA_FIELDS_PREVIEW,
     TEXT_ANALYZER,
     VIEW_NAME,
 )
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
 
 def _fetch_bm25_candidates(
     db: StandardDatabase,

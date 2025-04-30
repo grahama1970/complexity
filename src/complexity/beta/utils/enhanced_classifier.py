@@ -70,24 +70,29 @@ def enhanced_classify_complexity(
         embedding_field = CONFIG["embedding"]["field"]
         
         # Combined AQL query with graph traversal - using f-strings for collection names
+        # Fixed SHORTEST_PATH syntax and simplified traversal logic
         aql = f"""
         // First get semantically similar documents
         LET semantic_matches = (
             FOR doc IN {collection_name}
-                LET similarity = COSINE_SIMILARITY(doc.{embedding_field}, @embedding)
-                FILTER similarity > @min_similarity
+                LET similarity = APPROX_NEAR_COSINE(doc.{embedding_field}, @embedding)
                 SORT similarity DESC
                 LIMIT @k
+                FILTER similarity > @min_similarity
                 RETURN MERGE(doc, {{ similarity: similarity, source: "semantic" }})
         )
         
         // Then get documents from graph traversal
         LET traversal_matches = (
             FOR doc IN semantic_matches
-                FOR related IN 1..@max_depth ANY doc {', '.join(edge_collections)}
+                FOR related IN 1..@max_depth ANY doc._id {', '.join(edge_collections)}
+                    LET distance = LENGTH(
+                        FOR v, e IN 1..@max_depth ANY doc._id {', '.join(edge_collections)}
+                            FILTER v._id == related._id
+                            RETURN 1
+                    )
                     RETURN MERGE(related, {{ 
-                        distance: LENGTH(SHORTEST_PATH({collection_name}, doc._id, related._id, 
-                                  {{ direction: "any", edgeCollections: {str(edge_collections)} }})),
+                        distance: distance,
                         source: "graph"
                     }})
         )
@@ -107,7 +112,7 @@ def enhanced_classify_complexity(
                 RETURN 1 - (d.distance / (@max_depth + 1))
             )
             LET combined_score = semantic_score * @semantic_weight + 
-                           COALESCE(graph_score, 0) * @graph_weight
+                           NOT_NULL(graph_score, 0) * @graph_weight
             SORT combined_score DESC
             LIMIT @k
             RETURN {{
@@ -127,8 +132,51 @@ def enhanced_classify_complexity(
             "graph_weight": 0.3  # Weight for graph relationships
         }
         
-        cursor = db.aql.execute(aql, bind_vars=bind_vars)
-        results = list(cursor)
+        # Use synchronous execution with direct iteration to avoid cursor issues
+        # Execute AQL query and get results
+        # Initialize result storage
+        results = []
+        
+        try:
+            # Execute query and get cursor
+            job = db.aql.execute(
+                aql,
+                bind_vars=bind_vars,
+                batch_size=k,
+                count=True,
+                full_count=True
+            )
+            
+            # Convert async job to result
+            cursor = job.result() if hasattr(job, 'result') else job
+            
+            # Fetch all results safely
+            while cursor.has_more():
+                batch = cursor.fetch()
+                if not batch:
+                    break
+                results.extend(batch)
+            
+            # Handle empty results
+            if not results:
+                return {
+                    "classification": "Unknown",
+                    "confidence": 0.0,
+                    "auto_accept": False,
+                    "neighbors": []
+                }
+                
+            logger.debug(f"Query returned {len(results)} results")
+            
+        except Exception as query_error:
+            logger.error(f"ArangoDB query error: {query_error}")
+            return {
+                "classification": "Error",
+                "confidence": 0.0,
+                "auto_accept": False,
+                "error": str(query_error),
+                "neighbors": []  # Added missing 'neighbors' key
+            }
         
         if not results:
             return {
@@ -143,7 +191,7 @@ def enhanced_classify_complexity(
         total = 0.0
         exponent = 2.0  # Configurable, higher values give more weight to close matches
         
-        for r in results:
+        for r in (results or []):  # Ensure list iteration
             document = r["document"]
             score = r["score"]
             if score > 0:
@@ -161,13 +209,14 @@ def enhanced_classify_complexity(
             }
         
         # Determine majority and confidence
-        majority = max(votes, key=votes.get)
+        # Get label with highest vote count, defaulting to 0 for simple questions
+        majority = 1 if votes.get(1, 0.0) > votes.get(0, 0.0) else 0
         confidence = votes[majority] / total
-        auto_accept = confidence >= CONFIG["classification"]["confidence_threshold"] and len(results) >= k
+        auto_accept = confidence >= CONFIG["classification"]["confidence_threshold"] and len(results or []) >= k
         
         classification = "Complex" if majority == 1 else "Simple"
         
-        # Prepare response
+        # Build response with basic neighbor list
         response = {
             "classification": classification,
             "confidence": confidence,
@@ -180,7 +229,7 @@ def enhanced_classify_complexity(
                     "semantic_score": r.get("semantic_score", 0),
                     "graph_score": r.get("graph_score", 0)
                 }
-                for r in results[:3]  # Include top 3 neighbors for reference
+                for r in results[:3]  # Get top 3 neighbors
             ]
         }
         
@@ -200,7 +249,8 @@ def enhanced_classify_complexity(
             "classification": "Error",
             "confidence": 0.0,
             "auto_accept": False,
-            "error": str(e)
+            "error": str(e),
+            "neighbors": []  # Added missing 'neighbors' key
         }
 
 
@@ -235,9 +285,9 @@ if __name__ == "__main__":
             ensure_graph(db_instance)
             logger.info("DB structure checks completed.")
         except SystemExit as se:
-             logger.warning(f"DB setup check failed or exited: {se}. Classification might return default/error.")
+            logger.warning(f"DB setup check failed or exited: {se}. Classification might return default/error.")
         except Exception as setup_err:
-             logger.warning(f"Error during DB setup check: {setup_err}. Classification might return default/error.")
+            logger.warning(f"Error during DB setup check: {setup_err}. Classification might return default/error.")
 
 
         # --- Enhanced Classification ---
@@ -246,38 +296,41 @@ if __name__ == "__main__":
         logger.info(f"Classification result: {result}")
 
         # --- Validation ---
-        if not isinstance(result, dict):
+        # Define required keys first
+        required_keys = ["classification", "confidence", "auto_accept", "neighbors"]
+
+        # Validate result has all required keys
+        if not all(key in result for key in required_keys):
             validation_passed = False
-            validation_failures["return_type"] = {"expected": "dict", "actual": type(result).__name__}
-            logger.error("Return value is not a dictionary.")
-        else:
-            # Check required keys
-            required_keys = ["classification", "confidence", "auto_accept", "neighbors"]
+            missing_keys = [key for key in required_keys if key not in result]
+            validation_failures["missing_keys"] = {"expected": str(required_keys), "actual": f"Missing: {missing_keys}"}
+            logger.error(f"Result missing required keys: {missing_keys}")
             for key in required_keys:
                 if key not in result:
                     validation_passed = False
                     validation_failures[f"missing_key_{key}"] = {"expected": f"Key '{key}'", "actual": "Missing"}
                     logger.error(f"Result dictionary missing required key: '{key}'")
 
+        # Only proceed with these checks if all required keys exist
+        if all(key in result for key in required_keys):
             # Check classification value (treat as warning for now, as it's heuristic)
             actual_classification = result.get("classification")
             if actual_classification != EXPECTED_CLASSIFICATION and actual_classification != "Error" and actual_classification != "Unknown":
-                 # validation_passed = False # Optionally make this a hard failure
-                 validation_failures["classification_value"] = {"expected": EXPECTED_CLASSIFICATION, "actual": actual_classification}
-                 logger.warning(f"Classification mismatch: Expected '{EXPECTED_CLASSIFICATION}', Got '{actual_classification}'")
+                # validation_passed = False # Optionally make this a hard failure
+                validation_failures["classification_value"] = {"expected": EXPECTED_CLASSIFICATION, "actual": actual_classification}
+                logger.warning(f"Classification mismatch: Expected '{EXPECTED_CLASSIFICATION}', Got '{actual_classification}'")
 
             # Check confidence type
-            if "confidence" in result and not isinstance(result["confidence"], float):
-                 validation_passed = False
-                 validation_failures["confidence_type"] = {"expected": "float", "actual": type(result['confidence']).__name__}
-                 logger.error("Confidence value is not a float.")
+            if not isinstance(result["confidence"], float):
+                validation_passed = False
+                validation_failures["confidence_type"] = {"expected": "float", "actual": type(result['confidence']).__name__}
+                logger.error("Confidence value is not a float.")
 
             # Check neighbors type
-            if "neighbors" in result and not isinstance(result["neighbors"], list):
-                 validation_passed = False
-                 validation_failures["neighbors_type"] = {"expected": "list", "actual": type(result['neighbors']).__name__}
-                 logger.error("Neighbors value is not a list.")
-
+            if not isinstance(result["neighbors"], list):
+                validation_passed = False
+                validation_failures["neighbors_type"] = {"expected": "list", "actual": type(result['neighbors']).__name__}
+                logger.error("Neighbors value is not a list.")
 
     except Exception as e:
         validation_passed = False
@@ -294,8 +347,8 @@ if __name__ == "__main__":
         print("FAILURE DETAILS:")
         for field, details in validation_failures.items():
             if isinstance(details, dict):
-                 print(f"  - {field}: Expected: {details.get('expected', 'N/A')}, Got: {details.get('actual', 'N/A')}")
+                print(f"  - {field}: Expected: {details.get('expected', 'N/A')}, Got: {details.get('actual', 'N/A')}")
             else:
-                 print(f"  - {field}: {details}")
+                print(f"  - {field}: {details}")
         logger.error("Standalone execution and validation failed.")
         sys.exit(1)

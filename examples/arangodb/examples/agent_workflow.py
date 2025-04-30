@@ -2,12 +2,12 @@
 import sys
 import uuid
 from loguru import logger
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database, ensure_edge_collection, ensure_graph
-from pdf_extractor.arangodb.agent_decision import (
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database, ensure_edge_collection, ensure_graph
+from complexity.arangodb.agent_decision import (
     evaluate_relationship_need, create_strategic_relationship, mock_hybrid_search
 )
-from pdf_extractor.arangodb.advanced_query_solution import solve_query
-from pdf_extractor.arangodb.config import COLLECTION_NAME, EDGE_COLLECTION_NAME
+from complexity.arangodb.advanced_query_solution import solve_query
+from complexity.arangodb.config import COLLECTION_NAME, EDGE_COLLECTION_NAME
 
 logger.remove()
 logger.add(sys.stderr, level="INFO")

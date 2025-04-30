@@ -9,17 +9,17 @@ from arango.exceptions import AQLQueryExecuteError, ArangoServerError
 
 # Import config variables and embedding utils
 # --- Configuration and Imports ---
-from pdf_extractor.arangodb.config import (
+from complexity.arangodb.config import (
     COLLECTION_NAME,
     SEARCH_FIELDS,
     ALL_DATA_FIELDS_PREVIEW,
     TEXT_ANALYZER,
     VIEW_NAME,
 )
-from pdf_extractor.arangodb.embedding_utils import get_embedding
-from pdf_extractor.arangodb.search_api.bm25 import _fetch_bm25_candidates # Keep using internal BM25 for now
-from pdf_extractor.arangodb.search_api.semantic import semantic_search # Import the corrected public function
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
+from complexity.arangodb.embedding_utils import get_embedding
+from complexity.arangodb.search_api.bm25_search import _fetch_bm25_candidates # Keep using internal BM25 for now
+from complexity.arangodb.search_api._archive.semantic import semantic_search # Import the corrected public function
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
 
 def validate_search_params(query_text, top_n, initial_k):
     """Validate search parameters and set reasonable defaults."""

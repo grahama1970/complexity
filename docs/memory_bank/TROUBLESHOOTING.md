@@ -132,7 +132,7 @@ This document provides guidance on common issues and their resolutions encounter
 *   **Problem:** Running CLI commands fails or produces unexpected errors.
 *   **Solution:**
     1.  **Execution Pattern:** Always execute CLI commands using the `uv run python -m <module_path> ...` pattern from the project root directory.
-        *   Example: `uv run python -m src.pdf_extractor.arangodb.cli search bm25 "query terms"`
+        *   Example: `uv run python -m src.complexity.arangodb.cli search bm25 "query terms"`
     2.  **Environment:** Ensure all required environment variables (ArangoDB connection details, API keys) are loaded into the environment where `uv run` is executed.
     3.  **Arguments:** Double-check the command, subcommand, arguments, and options against the command's help text (`uv run python -m <module_path> [COMMAND] [SUBCOMMAND] --help`). Pay attention to required arguments vs. options.
     4.  **File Paths:** Ensure any file paths provided via options like `--data-file` are correct relative to the project root or absolute paths.

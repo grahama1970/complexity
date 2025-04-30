@@ -8,8 +8,8 @@ from loguru import logger
 
 from arango.database import StandardDatabase
 
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
-from pdf_extractor.arangodb.config import (
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
+from complexity.arangodb.config import (
     COLLECTION_NAME as DOC_COLLECTION_NAME,
     VIEW_NAME,
     TEXT_ANALYZER,
@@ -19,7 +19,7 @@ from pdf_extractor.arangodb.config import (
 
 # Try to import message_history_config, but provide a fallback if not available
 try:
-    from pdf_extractor.arangodb.message_history_config import (
+    from complexity.arangodb._archive.message_history_config import (
         MESSAGE_COLLECTION_NAME
     )
 except ImportError:

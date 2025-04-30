@@ -17,4 +17,4 @@ This document provides a summary of the commands available in the `src/pdf_extra
 | `graph delete-relationship` | Remove a specific relationship link (edge) between lessons.                 | `EDGE_KEY` (required), `--yes`, `--json-output`                                       |
 | `graph traverse`            | Explore relationships between lessons via graph traversal.                  | `START_NODE_ID` (required), `--graph-name`, `--min-depth`, `--max-depth`, `--direction`, `--limit`, `--json-output` |
 
-*Refer to the docstrings within `cli.py` or use `python -m src.pdf_extractor.arangodb.cli [COMMAND] --help` for detailed information on each command's arguments and options.*
+*Refer to the docstrings within `cli.py` or use `python -m src.complexity.arangodb.cli [COMMAND] --help` for detailed information on each command's arguments and options.*

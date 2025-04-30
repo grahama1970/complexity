@@ -15,9 +15,9 @@ from loguru import logger
 from arango.database import StandardDatabase
 
 # Import necessary components from our implementation
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
-from pdf_extractor.arangodb.config import COLLECTION_NAME
-from pdf_extractor.arangodb.relationship_api import add_relationship, get_relationships
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
+from complexity.arangodb.config import COLLECTION_NAME
+from complexity.arangodb.relationship_api import add_relationship, get_relationships
 
 # Configure logging
 logger.remove()

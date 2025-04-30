@@ -21,8 +21,8 @@ try:
     _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     if _root not in sys.path:
         sys.path.insert(0, _root)
-    from pdf_extractor.arangodb.config import COLLECTION_NAME, SEARCH_FIELDS
-    from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
+    from complexity.arangodb.config import COLLECTION_NAME, SEARCH_FIELDS
+    from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
 
     logger.debug(
         f"Loaded config: COLLECTION_NAME={COLLECTION_NAME}, SEARCH_FIELDS={SEARCH_FIELDS}"
@@ -250,7 +250,7 @@ if __name__ == "__main__":
     from loguru import logger as _logger
     
     try:
-        from pdf_extractor.arangodb.lessons import add_lesson, delete_lesson
+        from complexity.arangodb.lessons import add_lesson, delete_lesson
     except ImportError:
         # Mock implementations for testing
         def add_lesson(db, lesson_data):

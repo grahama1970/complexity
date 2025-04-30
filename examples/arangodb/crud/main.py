@@ -7,9 +7,9 @@ from loguru import logger
 
 # Import setup and specific CRUD functions needed for testing
 # Use absolute imports based on the package structure
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
-from pdf_extractor.arangodb.crud.generic import get_document, delete_document # Need generic delete_document for cleanup
-from pdf_extractor.arangodb.crud.message_history import (
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
+from complexity.arangodb.crud.generic import get_document, delete_document # Need generic delete_document for cleanup
+from complexity.arangodb.crud.message_history import (
     create_message,
     get_message, # Add missing import
     update_message,
@@ -17,13 +17,13 @@ from pdf_extractor.arangodb.crud.message_history import (
     MESSAGE_COLLECTION_NAME,
     MESSAGE_TYPE_USER
 )
-from pdf_extractor.arangodb.crud.relationships import (
+from complexity.arangodb.crud.relationships import (
     link_message_to_document,
     get_documents_for_message,
     get_messages_for_document
 )
 # Import COLLECTION_NAME and alias it
-from pdf_extractor.arangodb.config import COLLECTION_NAME as DOC_COLLECTION_NAME
+from complexity.arangodb.config import COLLECTION_NAME as DOC_COLLECTION_NAME
 
 
 if __name__ == "__main__":

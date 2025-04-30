@@ -7,12 +7,12 @@ from loguru import logger
 from arango.database import StandardDatabase
 from arango.exceptions import AQLQueryExecuteError, ArangoServerError
 
-from pdf_extractor.arangodb.config import (
+from complexity.arangodb.config import (
     COLLECTION_NAME,
     ALL_DATA_FIELDS_PREVIEW,
     TAG_ANALYZER
 )
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
 
 def tag_search(
     db: StandardDatabase,

@@ -6,8 +6,8 @@ from typing import Tuple, List, Dict, Any, Optional
 from loguru import logger
 from arango.database import StandardDatabase
 
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
-from pdf_extractor.arangodb.config import GRAPH_NAME
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
+from complexity.arangodb.config import GRAPH_NAME
 
 def validate_search_params(query_text, top_n, initial_k) -> Tuple[str, int, int]:
     """

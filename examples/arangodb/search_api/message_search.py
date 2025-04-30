@@ -8,20 +8,20 @@ from loguru import logger
 
 from arango.database import StandardDatabase
 
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
-from pdf_extractor.arangodb.config import (
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
+from complexity.arangodb.config import (
     COLLECTION_NAME as DOC_COLLECTION_NAME,
     VIEW_NAME
 )
 
 # Import search functions
-from pdf_extractor.arangodb.search_api.hybrid import hybrid_search
-from pdf_extractor.arangodb.search_api.bm25 import bm25_search
-from pdf_extractor.arangodb.search_api.semantic import semantic_search
+from complexity.arangodb.search_api.hybrid import hybrid_search
+from complexity.arangodb.search_api.bm25_search import bm25_search
+from complexity.arangodb.search_api._archive.semantic import semantic_search
 
 # Try to import message_history_config, but provide a fallback if not available
 try:
-    from pdf_extractor.arangodb.message_history_config import (
+    from complexity.arangodb._archive.message_history_config import (
         MESSAGE_COLLECTION_NAME
     )
 except ImportError:

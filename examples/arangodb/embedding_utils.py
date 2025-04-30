@@ -16,7 +16,7 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 # Import config for embedding model
-from pdf_extractor.arangodb.config import EMBEDDING_MODEL, EMBEDDING_DIMENSIONS
+from complexity.arangodb.config import EMBEDDING_MODEL, EMBEDDING_DIMENSIONS
 
 # Try to load API key from environment
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")

@@ -26,8 +26,8 @@ from arango.cursor import Cursor  # Import Cursor for type checking
 from rapidfuzz import fuzz, process
 
 # Import config variables and connection setup
-from pdf_extractor.arangodb.arango_setup import connect_arango, ensure_database
-from pdf_extractor.arangodb.config import (
+from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
+from complexity.arangodb.config import (
     VIEW_NAME,
     COLLECTION_NAME,
     TEXT_ANALYZER

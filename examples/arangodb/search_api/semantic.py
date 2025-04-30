@@ -10,15 +10,15 @@ from arango.exceptions import AQLQueryExecuteError, ArangoServerError
 
 # Import config variables and embedding utils
 try:
-    from pdf_extractor.arangodb.config import (
+    from complexity.arangodb.config import (
         COLLECTION_NAME,
         VIEW_NAME,  # Keep VIEW_NAME import for potential future use or other functions
         ALL_DATA_FIELDS_PREVIEW,
         EMBEDDING_MODEL,
         EMBEDDING_DIMENSIONS
     )
-    from pdf_extractor.arangodb.arango_setup import EMBEDDING_FIELD, connect_arango, ensure_database
-    from pdf_extractor.arangodb.embedding_utils import get_embedding
+    from complexity.arangodb.arango_setup_unknown import EMBEDDING_FIELD, connect_arango, ensure_database
+    from complexity.arangodb.embedding_utils import get_embedding
 except ImportError as e:
     logger.critical(f"CRITICAL: Failed module-level import in semantic.py: {e}. Functionality will be broken.")
     # Define fallbacks to allow module to load (but not function)

@@ -24,7 +24,7 @@ Ensure the following environment variables are set before executing commands:
 **Invocation:**
 
 Execute commands using the python module execution flag `-m`:
-`python -m src.pdf_extractor.arangodb.cli [OPTIONS] COMMAND [ARGS]...`
+`python -m src.complexity.arangodb.cli [OPTIONS] COMMAND [ARGS]...`
 
 **Available Commands:**
 
@@ -135,22 +135,22 @@ from typing import List, Optional, Any, Dict, Union
 # Assume these modules exist and are importable based on project structure
 try:
     # Use absolute imports from src
-    from pdf_extractor.arangodb.arango_setup import (
+    from complexity.arangodb.arango_setup_unknown import (
         connect_arango,
         ensure_database,
         ensure_edge_collection,  # Added for graph setup check
         ensure_graph,  # Added for graph setup check
     )
     # Import from search_api directly (assuming search_advanced might be outdated or just re-exports)
-    from pdf_extractor.arangodb.search_api.bm25 import bm25_search
-    from pdf_extractor.arangodb.search_api.semantic import semantic_search
-    from pdf_extractor.arangodb.search_api.hybrid import hybrid_search
-    from pdf_extractor.arangodb.search_api.graph_traverse import graph_traverse
-    from pdf_extractor.arangodb.search_api.keyword import search_keyword # Correct function name
-    from pdf_extractor.arangodb.search_api.tag_search import tag_search # Correct function name
+    from complexity.arangodb.search_api.bm25_search import bm25_search
+    from complexity.arangodb.search_api._archive.semantic import semantic_search
+    from complexity.arangodb.search_api.hybrid import hybrid_search
+    from complexity.arangodb.search_api.graph_traverse import graph_traverse
+    from complexity.arangodb.search_api.keyword_search import search_keyword # Correct function name
+    from complexity.arangodb.search_api.tag_search import tag_search # Correct function name
     # Removed outdated search_advanced import block
     # Import from the new crud package
-    from pdf_extractor.arangodb.crud import ( # Import from the new crud package __init__
+    from complexity.arangodb.crud import ( # Import from the new crud package __init__
         create_document,
         get_document,
         update_document,
@@ -158,14 +158,14 @@ try:
         create_relationship, # Import new relationship function
         delete_relationship_by_key, # Import new relationship function
     )
-    from pdf_extractor.arangodb.embedding_utils import get_embedding
+    from complexity.arangodb.embedding_utils import get_embedding
 
     # Import log utility for truncation
-    from pdf_extractor.arangodb.log_utils import truncate_large_value
+    from complexity.arangodb.log_utils import truncate_large_value
     # log_safe_results is for lists of dicts, truncate_large_value handles dicts recursively
 
     # Added EDGE_COLLECTION_NAME, COLLECTION_NAME
-    from pdf_extractor.arangodb.config import (
+    from complexity.arangodb.config import (
         ARANGO_DB_NAME,
         GRAPH_NAME,
         COLLECTION_NAME,
