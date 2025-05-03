@@ -1,5 +1,6 @@
 # Crucial
 vertex_ai_service_account.json
+.mcp.json
 
 # Standard ignores
 .venv/
