@@ -144,19 +144,19 @@ try:
     # Import from search_api directly (assuming search_advanced might be outdated or just re-exports)
     from complexity.arangodb.search_api.bm25_search import bm25_search
     from complexity.arangodb.search_api._archive.semantic import semantic_search
-    from complexity.arangodb.search_api.hybrid import hybrid_search
+    from complexity.arangodb.search_api.hybrid_search import hybrid_search
     from complexity.arangodb.search_api.graph_traverse import graph_traverse
     from complexity.arangodb.search_api.keyword_search import search_keyword # Correct function name
     from complexity.arangodb.search_api.tag_search import tag_search # Correct function name
     # Removed outdated search_advanced import block
     # Import from the new crud package
-    from complexity.arangodb.crud import ( # Import from the new crud package __init__
+    from complexity.arangodb.db_operations import ( # Import from consolidated db_operations module
         create_document,
         get_document,
         update_document,
         delete_document,
-        create_relationship, # Import new relationship function
-        delete_relationship_by_key, # Import new relationship function
+        create_relationship,
+        delete_relationship_by_key,
     )
     from complexity.arangodb.embedding_utils import get_embedding
 

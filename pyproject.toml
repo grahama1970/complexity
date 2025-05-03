@@ -34,6 +34,13 @@ dependencies = [
     "faiss-cpu>=1.11.0",
     "colorama>=0.4.6",
     "rich>=13.9.4",
+    "gitingest>=0.1.4",
+    "tiktoken>=0.8.0",
+    "google-auth>=2.39.0",
+    "google-auth-oauthlib>=1.2.2",
+    "redis>=6.0.0",
+    "markitdown>=0.1.1",
+    "pytest-asyncio>=0.26.0",
 ]
 
 [project.scripts]

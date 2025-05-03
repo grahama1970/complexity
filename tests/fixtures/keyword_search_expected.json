@@ -1,6 +1,17 @@
 {
-  "search_term": "mobile",
+  "search_term": "database connection error",
   "similarity_threshold": 97.0,
-  "total": 0,
-  "expected_result_keys": []
+  "min_results": 2,
+  "total": 5,
+  "expected_result_count": 3,
+  "expected_engine": "keyword-fuzzy",
+  "has_error": false,
+  "expected_result_keys": ["doc234", "doc567", "doc890"],
+  "fields_to_search": ["problem", "solution", "context"],
+  "expected_keyword_scores": {
+    "doc234": 0.98,
+    "doc567": 0.95,
+    "doc890": 0.90
+  }
 }
+EOF < /dev/null

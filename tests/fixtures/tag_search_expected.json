@@ -1,8 +1,16 @@
 {
-  "tags": [
-    "family",
-    "daughter"
-  ],
-  "total": 1,
-  "expected_result_keys": []
+  "tags": ["python", "tutorial"],
+  "total": 3,
+  "expected_result_keys": ["doc123", "doc456", "doc789"],
+  "require_all_tags": false,
+  "expected_result_count": 3,
+  "search_engine": "tag-search",
+  "has_error": false,
+  "fields_to_return": ["problem", "solution", "context", "question"],
+  "expected_tag_match_scores": {
+    "doc123": 1.0,
+    "doc456": 0.5,
+    "doc789": 0.5
+  }
 }
+EOF < /dev/null

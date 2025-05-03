@@ -3,7 +3,7 @@ import os
 import json
 from pathlib import Path
 import re
-from typing import Union, Callable, Any
+from typing import Union
 
 from json_repair import repair_json
 from loguru import logger
@@ -150,37 +150,6 @@ def clean_json_string(content: Union[str, dict, list], return_dict: bool=False) 
         return parsed_content
     logger.info(f'Returning original content: {content}')
     return content
-
-
-def json_to_markdown(data, level=1, title_case=True):
-    md = ""
-    if isinstance(data, dict):
-        for key, value in data.items():
-            heading = key.replace('_', ' ').title() if title_case else key
-            if key.lower() == "summary" and isinstance(value, str):
-                md += f"{'#' * level} {heading}\n\n{value.strip()}\n\n"
-            elif key.lower() == "table_of_contents" and isinstance(value, list):
-                md += f"{'#' * level} {heading}\n\n"
-                for item in value:
-                    md += f"- {item}\n"
-                md += "\n"
-            elif key.lower() == "key_sections" and isinstance(value, list):
-                md += f"{'#' * level} {heading}\n\n"
-                for section in value:
-                    name = section.get("name", "")
-                    desc = section.get("description", "")
-                    md += f"- **{name}**\n\n  {desc}\n\n"
-            else:
-                # For other keys, recurse
-                md += f"{'#' * level} {heading}\n\n"
-                md += json_to_markdown(value, level + 1, title_case)
-    elif isinstance(data, list):
-        for item in data:
-            md += "- " + json_to_markdown(item, level + 1, title_case).lstrip()
-    else:
-        md += str(data) + "\n\n"
-    return md
-
 
 def usage_example():
     """

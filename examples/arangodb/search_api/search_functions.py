@@ -26,7 +26,7 @@ except ImportError:
     logger.warning("Using fallback MESSAGE_COLLECTION_NAME for testing")
 
 # Import search functions
-from complexity.arangodb.search_api.hybrid import hybrid_search
+from complexity.arangodb.search_api.hybrid_search import hybrid_search
 from complexity.arangodb.search_api.bm25_search import bm25_search
 from complexity.arangodb.search_api._archive.semantic import semantic_search
 

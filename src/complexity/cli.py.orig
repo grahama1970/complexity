@@ -100,8 +100,6 @@ Execute commands using the python module execution flag `-m`:
 import typer
 import json
 import sys
-import uuid
-import time
 import os
 from pathlib import Path
 from typing import List, Optional, Any, Dict, Union

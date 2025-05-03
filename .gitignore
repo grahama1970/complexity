@@ -1,3 +1,6 @@
+# Crucial
+vertex_ai_service_account.json
+
 # Standard ignores
 .venv/
 .vscode/
@@ -44,3 +47,5 @@ notebooks/
 # Local development
 .DS_Store
 .idea/
+
+**/.claude/settings.local.json

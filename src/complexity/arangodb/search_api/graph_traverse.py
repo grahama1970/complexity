@@ -24,6 +24,54 @@ from complexity.arangodb.embedding_utils import get_embedding
 from complexity.arangodb.log_utils import truncate_large_value
 from complexity.arangodb.display_utils import print_search_results
 
+# Add compatibility wrapper for CLI
+def graph_traverse(
+    db: StandardDatabase,
+    start_vertex_key: str,
+    min_depth: int = 1,
+    max_depth: int = 1,
+    direction: str = "ANY",
+    limit: int = 10,
+    start_vertex_collection: str = None,
+    graph_name: str = None
+) -> Dict[str, Any]:
+    """
+    Compatibility wrapper for graph_rag_search to support CLI integration.
+    
+    Args:
+        db: ArangoDB database
+        start_vertex_key: Key of start vertex
+        min_depth: Minimum traversal depth
+        max_depth: Maximum traversal depth
+        direction: Direction of traversal (OUTBOUND, INBOUND, ANY)
+        limit: Maximum number of results to return
+        start_vertex_collection: Collection containing the start vertex
+        graph_name: Name of the graph to traverse
+        
+    Returns:
+        Results of graph traversal
+    """
+    logger.info(f"Graph traverse wrapper called for vertex {start_vertex_key}")
+    
+    # Use defaults from config if not provided
+    collection = start_vertex_collection or COLLECTION_NAME
+    graph = graph_name or GRAPH_NAME
+    
+    # Call the actual implementation (graph_rag_search)
+    return graph_rag_search(
+        db=db,
+        query_text="",  # Not used for traversal, just for RAG
+        min_depth=min_depth,
+        max_depth=max_depth,
+        direction=direction,
+        relationship_types=None,  # No filtering by type
+        min_score=0.0,  # No minimum score filter
+        top_n=limit,
+        output_format="table",
+        fields_to_return=None,
+        edge_collection_name=None
+    )
+
 
 def graph_rag_search(
     db: StandardDatabase,

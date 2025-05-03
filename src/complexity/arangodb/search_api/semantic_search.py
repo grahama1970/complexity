@@ -57,7 +57,7 @@ from complexity.arangodb.config import (
     EMBEDDING_DIMENSIONS, 
     EMBEDDING_FIELD
 )
-from complexity.arangodb.arango_setup_unknown import connect_arango, ensure_database
+from complexity.arangodb.arango_setup import connect_arango, ensure_database
 from complexity.arangodb.embedding_utils import get_embedding
 from complexity.arangodb.log_utils import truncate_large_value
 from complexity.arangodb.display_utils import print_search_results as display_results
@@ -341,11 +341,16 @@ def _direct_semantic_search(
                     f"RETURN DOCUMENT('{doc_id}')"
                 )
                 # Convert cursor to list and get the first item
-                doc_list = list(cursor)
-                if doc_list and len(doc_list) > 0:
-                    doc = doc_list[0]
-                else:
-                    logger.warning(f"Document {doc_id} not found")
+                try:
+                    doc_list = list(cursor)
+                    # Handle various possible return types
+                    if isinstance(doc_list, list) and doc_list and len(doc_list) > 0:
+                        doc = doc_list[0]
+                    else:
+                        logger.warning(f"Document {doc_id} not found (empty result)")
+                        continue
+                except Exception as e:
+                    logger.warning(f"Error processing document {doc_id}: {e}")
                     continue
             except Exception as e:
                 logger.warning(f"Failed to fetch document {doc_id}: {e}")

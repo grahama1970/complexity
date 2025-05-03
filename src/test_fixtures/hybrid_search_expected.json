@@ -1,0 +1,64 @@
+{
+  "query": "machine learning data preprocessing",
+  "count": 5,
+  "total": 15,
+  "search_engine": "hybrid-bm25-semantic",
+  "results": [
+    {
+      "doc": {
+        "_key": "doc001",
+        "problem": "How to efficiently preprocess large datasets for machine learning?",
+        "solution": "Use parallel processing libraries and incremental preprocessing pipelines.",
+        "tags": ["machine-learning", "data-processing", "performance"]
+      },
+      "bm25_score": 8.5,
+      "semantic_score": 0.92,
+      "hybrid_score": 0.95
+    },
+    {
+      "doc": {
+        "_key": "doc002",
+        "problem": "Best practices for handling missing data in ML pipelines?",
+        "solution": "Use imputation techniques appropriate for your data distribution.",
+        "tags": ["machine-learning", "data-cleaning", "best-practices"]
+      },
+      "bm25_score": 7.2,
+      "semantic_score": 0.88,
+      "hybrid_score": 0.91
+    },
+    {
+      "doc": {
+        "_key": "doc003",
+        "problem": "How to normalize features for deep learning models?",
+        "solution": "Use standardization or min-max scaling depending on the neural network architecture.",
+        "tags": ["deep-learning", "preprocessing", "normalization"]
+      },
+      "bm25_score": 6.8,
+      "semantic_score": 0.85,
+      "hybrid_score": 0.87
+    },
+    {
+      "doc": {
+        "_key": "doc004",
+        "problem": "Efficient data augmentation techniques for small datasets?",
+        "solution": "Use domain-specific transformations and consider generative models for synthetic data.",
+        "tags": ["machine-learning", "data-augmentation", "small-data"]
+      },
+      "bm25_score": 6.2,
+      "semantic_score": 0.83,
+      "hybrid_score": 0.84
+    },
+    {
+      "doc": {
+        "_key": "doc005",
+        "problem": "How to handle categorical variables in preprocessing pipelines?",
+        "solution": "Use one-hot encoding for nominal data and ordinal encoding for ordered categories.",
+        "tags": ["preprocessing", "categorical-data", "feature-engineering"]
+      },
+      "bm25_score": 5.9,
+      "semantic_score": 0.79,
+      "hybrid_score": 0.81
+    }
+  ]
+}
+EOF < /dev/null
